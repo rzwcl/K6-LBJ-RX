@@ -1,0 +1,36 @@
+name: Package TDCSRX recovered source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "research/tdcsrx_rx03/**"
+      - ".github/workflows/package-tdcsrx-recovered.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout recovered research sources
+        uses: actions/checkout@v4
+
+      - name: Run recovered-source tests
+        working-directory: research/tdcsrx_rx03
+        run: make clean test
+
+      - name: Package source and reverse-engineering notes
+        run: |
+          mkdir -p dist
+          zip -r dist/TDCSRX-RX03-recovered-source.zip \
+            research/tdcsrx_rx03 \
+            -x 'research/tdcsrx_rx03/test_tdcsrx_recovered'
+
+      - name: Upload source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: TDCSRX-RX03-recovered-source
+          if-no-files-found: error
+          path: dist/TDCSRX-RX03-recovered-source.zip
