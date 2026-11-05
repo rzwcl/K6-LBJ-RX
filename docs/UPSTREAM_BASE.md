@@ -46,7 +46,7 @@ LBJ 固件是独立接收系统，不是把当前 132HS 所有功能原样保留
 
 ## LBJ 构建后缀 K
 
-作者 0.13.2 Makefile 在 `ENABLE_CHINESE_FULL=4`、`ENABLE_PINYIN=0`、`ENABLE_4732=0` 时生成后缀 `K`。因此 LBJ 输出名为 `LOSEHU132K.bin`：保留完整中文显示字库，不带拼音输入，也不带 SI4732 接收功能。它与用户上传的 `LOSEHU132HS` 是不同功能配置，符合独立 LBJ 接收系统的裁剪目标。
+作者 0.13.2 Makefile 在 `ENABLE_CHINESE_FULL=4`、`ENABLE_PINYIN=0`、`ENABLE_4732=0` 时生成后缀 `K`。因此 LBJ 输出名为 `LOSEHU132K.bin`：保留完整中文显示字库，不带拼音输入，也不带 SI4732 接收功能。它与用户上传的 `LOSEHU132HS` 是不同功能配置，符合独立 LBJ 接收系统的裁剪目标。本 LBJ 镜像也明确关闭 MDC1200/MDC 尾音功能，因为 MDC 与 LBJ 共用的 BK4819 FSK/FIFO 资源会冲突；它不是用户当前 132HS(MDC尾音)固件的功能替代品。
 
 ## 完整构建结果（2026-11-05）
 
