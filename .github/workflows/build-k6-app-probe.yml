@@ -30,6 +30,15 @@ jobs:
       - name: Test K6A1 container
         run: python3 -m unittest discover -s tests -p 'test_k6_app_image.py' -v
 
+      - name: Compile and run EEPROM APP-loader tests
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror \
+            -IFirmwareOverlay/apps \
+            FirmwareOverlay/apps/k6_app_runtime.c \
+            tests/test_k6_app_runtime.c \
+            -o build-k6-app-runtime-tests
+          ./build-k6-app-runtime-tests
+
       - name: Compile, link and package the fixed-VMA APP probe
         run: python3 tools/build_k6_app.py --out-dir build/k6-app-probe
 
