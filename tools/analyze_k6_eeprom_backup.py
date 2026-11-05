@@ -115,6 +115,20 @@ def main():
             "si4732_region_0x3C210_0x40000": ranges(raw, 0x3C210, 0x40000),
             "bootloader_and_multiboot_0x40000_0x80000": ranges(raw, 0x40000, min(0x80000, size)),
         },
+        "boundary_windows": {
+            "pinyin_to_app_start_0x2A300_0x2A500": raw[0x2A300:0x2A500].hex(" ") if size >= 0x2A500 else None,
+            "app_end_to_si4732_start_0x3A300_0x3C300": raw[0x3A300:0x3C300].hex(" ") if size >= 0x3C300 else None,
+            "si4732_start_0x3C100_0x3C300": raw[0x3C100:0x3C300].hex(" ") if size >= 0x3C300 else None,
+            "multiboot_catalogue_0x40000_0x40100": raw[0x40000:0x40100].hex(" ") if size >= 0x40100 else None,
+        },
+        "additional_gap_checks": {
+            "app_zone_to_si4732_start_all_ff": (
+                all(b == 0xFF for b in raw[0x2A400:0x3C210]) if size >= 0x3C210 else False
+            ),
+            "post_app_gap_0x3A400_0x3C210_all_ff": (
+                all(b == 0xFF for b in raw[0x3A400:0x3C210]) if size >= 0x3C210 else False
+            ),
+        },
         "first_256_hex": raw[:256].hex(" "),
     }
 
