@@ -40,6 +40,30 @@
 
 因此，“当前固件 BIN”已补充；“当前固件对应的完整源代码工程”仍未在仓库中发现。
 
+## 作者 LOSEHU 源码已定位
+
+- 上游：`https://github.com/losehu/uv-k5-firmware-custom`
+- 固定基准：tag `0.13.2`
+- commit：`021656ea13226d349e31acd6eb21079c5bab64c7`
+- 选择理由：用户上传镜像文件名为 `LOSEHU132HS(MDC尾音).bin`；作者 0.13.2 Makefile 的打包前缀为 LOSEHU132，README 定义 HS 为 H+SI4732 组合。该版本的 linker script FLASH=60 KiB。
+- 这属于强版本线索，不是机器码级精确来源证明；“MDC尾音”可能表示用户定制修改。
+
+用户 BIN 为 61,458 bytes。作者 `fw-pack.py` 的格式会增加 16-byte 版本字段和 2-byte CRC；因此对应的原始 `firmware.bin` 长度为 61,440 bytes（60 KiB），正好达到 0.13.2 linker script 的 FLASH 上限。这个关系与上传文件尺寸相符，但仍需通过解包/字节比对确认实际构建来源。
+
+新增：
+- `docs/UPSTREAM_BASE.md`：上游 tag、commit、HS 配置含义、版本对应分析和构建方向。
+- `.github/workflows/build-lbj.yml`：从固定 0.13.2 tag 拉取作者源码，在临时副本应用 overlay，使用 ARM GCC 做完整链接，并检查原始 BIN 不超过 60 KiB、打包长度等于 raw+18。产物只作为 Actions artifact，不把二进制混入源码提交。
+
+LBJ 专用镜像首轮构建配置：保留 `ENABLE_CHINESE_FULL=4`，关闭拼音、SI4732、MDC1200、Messenger、Aircopy、Spectrum、Doppler 和 FM Radio。它是独立接收系统，不要求保留当前 132HS 的所有附加功能。构建失败或超出 flash 时，根据链接 map 进一步裁剪；不能直接刷写。
+
+## 当前待执行验证
+
+1. GitHub Actions 首轮完整构建结果（检查 workflow 是否触发、dry-run/overlay/build 是否通过）。
+2. 如果构建失败，按第一处错误修复 installer 或 overlay，不能把失败包装成已完成。
+3. 审计除三个 radio.c 入口外所有 TX 路径，确保 LBJ 固件真正只接收。
+4. 用完整编译 map 核查 FLASH/RAM、60 KiB 空间和 LBJ 新增内存占用。
+5. RF FIFO 压力/中断频率/前导码重捕获仍需实测。
+
 ## 已有验证（不要扩大解释）
 
 仓库中的 `docs/VERIFICATION.txt` 记录：
