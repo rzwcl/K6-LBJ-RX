@@ -50,6 +50,7 @@ def main() -> int:
     makefile = read(root / "Makefile")
     app_c = read(root / "app/app.c")
     action_c = read(root / "app/action.c")
+    ui_main_c = read(root / "ui/main.c")
     ui_h = read(root / "ui/ui.h")
     ui_c = read(root / "ui/ui.c")
     main_c = read(root / "main.c")
@@ -113,6 +114,39 @@ def main() -> int:
         "    DTMF_clear_RX();\n#endif\n}",
         "#ifdef ENABLE_DTMF_CALLING\n    gRequestSaveChannel = 1;",
         "app/action.c",
+    )
+
+    # The Chinese-full status bar references DTMF-only state variables.
+    # Keep the ordinary antenna meter when DTMF calling is compiled out.
+    ui_main_c = replace_once(
+        ui_main_c,
+        "                if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo_num])) {\n"
+        "                    if (!gDTMF_IsTx\n"
+        "                        && gDTMF_CallState != DTMF_CALL_STATE_CALL_OUT\n"
+        "                        && gDTMF_CallState != DTMF_CALL_STATE_RECEIVED\n"
+        "                        && gDTMF_CallState != DTMF_CALL_STATE_RECEIVED_STAY\n"
+        "                    ) {\n"
+        "                        DrawSmallAntennaAndBars(gFrameBuffer[2] + LCD_WIDTH, Level);\n"
+        "                        audio_keep_flag = true;\n"
+        "                    }\n"
+        "                } else {",
+        "                if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo_num])) {\n"
+        "#ifdef ENABLE_DTMF_CALLING\n"
+        "                    if (!gDTMF_IsTx\n"
+        "                        && gDTMF_CallState != DTMF_CALL_STATE_CALL_OUT\n"
+        "                        && gDTMF_CallState != DTMF_CALL_STATE_RECEIVED\n"
+        "                        && gDTMF_CallState != DTMF_CALL_STATE_RECEIVED_STAY\n"
+        "                    ) {\n"
+        "                        DrawSmallAntennaAndBars(gFrameBuffer[2] + LCD_WIDTH, Level);\n"
+        "                        audio_keep_flag = true;\n"
+        "                    }\n"
+        "#else\n"
+        "                    DrawSmallAntennaAndBars(gFrameBuffer[2] + LCD_WIDTH, Level);\n"
+        "                    audio_keep_flag = true;\n"
+        "#endif\n"
+        "                } else {",
+        "#ifdef ENABLE_DTMF_CALLING\n                    if (!gDTMF_IsTx",
+        "ui/main.c",
     )
 
     app_c = insert_once(
@@ -295,7 +329,8 @@ def main() -> int:
         shutil.copy2(OVERLAY / rel, target)
 
     for rel, content in (("Makefile", makefile), ("app/app.c", app_c),
-                         ("app/action.c", action_c), ("ui/ui.h", ui_h), ("ui/ui.c", ui_c),
+                         ("app/action.c", action_c), ("ui/main.c", ui_main_c),
+                         ("ui/ui.h", ui_h), ("ui/ui.c", ui_c),
                          ("main.c", main_c), ("radio.c", radio_c)):
         (root / rel).write_text(content, encoding="utf-8", newline="")
 
