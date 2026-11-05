@@ -34,7 +34,7 @@ void k6_app_main(const K6_AppAPI *api)
     s_key_count = 0u;
 
     while ((uint32_t)(api->millis() - started) < 15000u) {
-        const uint8_t key = api->get_key();
+        const uint8_t key = api->key_get_event();
 
         if (key == K6_APP_KEY_EXIT)
             break;
