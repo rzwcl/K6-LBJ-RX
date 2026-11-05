@@ -68,6 +68,9 @@ typedef struct K6_AppAPI {
     uint16_t (*radio_read)(uint8_t reg);
     void (*radio_write)(uint8_t reg, uint16_t value);
     void (*radio_restore)(void);
+
+    /* Read-only APP resources kept in the EEPROM slot after the code image. */
+    bool (*asset_read)(uint32_t offset, void *destination, uint16_t length);
 } K6_AppAPI;
 
 typedef void (*K6_AppEntry)(const K6_AppAPI *api);
