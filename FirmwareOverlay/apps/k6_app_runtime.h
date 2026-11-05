@@ -10,10 +10,37 @@ typedef bool (*K6_AppEEPROMRead)(uint32_t address,
                                  uint8_t length);
 
 typedef struct {
+    K6_AppEEPROMRead eeprom_read;
+
+    void (*display_clear)(void);
+    void (*print_line)(const char *text, uint8_t line);
+    void (*display_refresh)(void);
+    void (*backlight_on)(void);
+
+    uint8_t (*key_get_event)(void);
+    uint32_t (*millis)(void);
+    void (*delay_ms)(uint32_t ms);
+
+    bool (*rx_configure)(const K6_AppRxProfile *profile);
+    uint8_t (*rx_fifo_read)(uint16_t *words, uint8_t capacity);
+    uint16_t (*rx_read_rssi)(void);
+    void (*rx_restore)(void);
+} K6_AppHostServices;
+
+typedef struct {
     K6_AppHeader header;
     uint32_t slot_address;
     uint8_t slot_index;
 } K6_AppSlotInfo;
+
+/*
+ * Bind one active APP to the resident host service table. Only one APP may
+ * execute at a time. The caller must call K6APP_ClearAPI() after it returns.
+ */
+bool K6APP_BuildAPI(const K6_AppHostServices *host,
+                    const K6_AppSlotInfo *slot,
+                    K6_AppAPI *api);
+void K6APP_ClearAPI(void);
 
 /* Header/range check only; code and asset CRCs are checked during Load(). */
 bool K6APP_ReadSlotInfo(K6_AppEEPROMRead read_eeprom,
