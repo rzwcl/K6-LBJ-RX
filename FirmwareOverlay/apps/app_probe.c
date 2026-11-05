@@ -8,7 +8,7 @@ __attribute__((section(".text.k6_app_entry"), used))
 void k6_app_main(const K6_AppAPI *api)
 {
     uint32_t started;
-    char asset_text[13] = {0};
+    char asset_text[13];
 
     if (api == 0 ||
         api->abi_major != K6_APP_ABI_MAJOR ||
@@ -17,12 +17,16 @@ void k6_app_main(const K6_AppAPI *api)
         return;
     }
 
+    asset_text[12] = '\0';
+
     api->backlight_on();
     api->display_clear();
     api->print_line("K6 APP PROBE", 1u);
     api->print_line("SRAM OVERLAY OK", 3u);
-    if (api->asset_read != 0 && api->asset_read(0u, asset_text, 12u))
+    if (api->asset_read != 0 && api->asset_read(0u, asset_text, 12u)) {
+        asset_text[12] = '\0';
         api->print_line(asset_text, 4u);
+    }
     api->print_line("EXIT TO RETURN", 5u);
     api->display_refresh();
 
