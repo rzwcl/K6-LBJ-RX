@@ -153,3 +153,7 @@ make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0 ENA
 - POCSAG RX 算法参考（不同 MCU，不能直接烧录）：<https://github.com/armel/uv-k1-k5v3-firmware-custom/tree/main/App/apps/pocsagrx>
 - Windows 版 LBJ 字段和车型解析参考：<https://github.com/rzwcl/LBJ_Map/blob/main.py>
 - 新版车次分类规则：<https://github.com/rzwcl/New-Train-Number-Compilation-Rules/blob/main/mian%EF%BC%88%E5%8A%A8%E8%BD%A6%E7%BB%84%E8%87%AA2026%E5%B9%B412%E6%9C%88%E4%B8%8B%E6%97%AC%EF%BC%89.py>
+
+## TDCSRX RX 0.3 逆向研究（尚非 K6 固件）
+
+已恢复并单独保存原版 TDCSRX 0.3 的一部分应用帧解析逻辑，位于 [research/tdcsrx_rx03](research/tdcsrx_rx03/)。其中包含 C 代码、合成帧测试和逆向报告。它不是原作者完整 C 源码，未恢复音频 DSP/实时采样/完整 UI，也未接入 K6 固件。尤其 BCH 原版 `0xB905` 与独立参考 `0x05B9` 的 syndrome 差异尚未解决；不要把早期 `k6-full-firmware` 分支的 40-byte payload 试验代码直接当作正确实现。
