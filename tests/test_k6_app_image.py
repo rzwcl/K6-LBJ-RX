@@ -64,6 +64,51 @@ class K6AppImageTests(unittest.TestCase):
                 version="0.1",
             )
 
+
+    def test_assets_round_trip(self):
+        assets = b"loco-map\\x00K6 resource"
+        blob = build_image(
+            self.payload,
+            name="LBJRX",
+            version="0.1",
+            assets=assets,
+            bss_size=256,
+        )
+        app = parse_image(blob)
+        self.assertEqual(app.assets, assets)
+        self.assertEqual(app.asset_size, len(assets))
+        self.assertNotEqual(app.asset_crc32, 0)
+
+    def test_rejects_asset_crc_mismatch(self):
+        blob = bytearray(build_image(
+            self.payload,
+            name="LBJRX",
+            version="0.1",
+            assets=b"asset-data",
+        ))
+        blob[60] ^= 0x01
+        with self.assertRaisesRegex(ImageError, "asset CRC32 mismatch"):
+            parse_image(bytes(blob))
+
+    def test_slot_limit_includes_assets(self):
+        with self.assertRaisesRegex(ImageError, "slot limit"):
+            build_image(
+                bytes(7000),
+                name="LBJRX",
+                version="0.1",
+                assets=bytes(1200),
+                ram_limit=8000,
+            )
+
+    def test_rejects_wrong_link_vma(self):
+        with self.assertRaisesRegex(ImageError, "link_vma"):
+            build_image(
+                self.payload,
+                name="LBJRX",
+                version="0.1",
+                link_vma=0x20001000,
+            )
+
     def test_rejects_bad_entry_offset(self):
         with self.assertRaisesRegex(ImageError, "entry_offset"):
             build_image(
