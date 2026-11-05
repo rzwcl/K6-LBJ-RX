@@ -61,7 +61,8 @@ def main() -> int:
         "OBJS += app/messenger.o",
         "\n# LBJ standalone receiver application\nifeq ($(ENABLE_LBJ),1)\n"
         "\tOBJS += app/lbj_app.o app/lbj_pocsag.o app/lbj_core.o app/lbj_loco.o app/lbj_train_type.o app/lbj_radio.o\n"
-        "\tOBJS += ui/lbj.o\nendif\n",
+        "\tOBJS += ui/lbj.o\n"
+        "\tOBJS += driver/uart.o # UART_Send only; ENABLE_UART stays disabled\nendif\n",
         "# LBJ standalone receiver application",
         "Makefile",
     )
@@ -96,6 +97,7 @@ def main() -> int:
         "ifneq ($(ENABLE_MESSENGER),0)\n$(error ENABLE_LBJ and ENABLE_MESSENGER cannot share the BK4819 FSK FIFO)\nendif\n"
         "ifneq ($(ENABLE_MDC1200),0)\n$(error ENABLE_LBJ and ENABLE_MDC1200 cannot share the BK4819 FSK FIFO)\nendif\n"
         "ifneq ($(ENABLE_AIRCOPY),0)\n$(error ENABLE_LBJ and ENABLE_AIRCOPY cannot share the BK4819 FSK FIFO)\nendif\n"
+        "\tLDFLAGS += --specs=nosys.specs\n"
         "\tCFLAGS += -DENABLE_LBJ\nendif\n\n",
         "CFLAGS += -DENABLE_LBJ",
         "Makefile",
