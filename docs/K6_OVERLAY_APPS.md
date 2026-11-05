@@ -48,7 +48,7 @@ K6 目标机使用 512 KiB I²C EEPROM。LOSEHU 多固件 Bootloader 的布局�
 
 LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束，SI4732 配置/patch 从 0x3C210 开始。因此当前规划的候选 APP 区为：
 
-- APP 区候选范围：0x2A400–0x3A400
+- APP 区候选范围：0x2A400–0x3A400（结束地址不包含）
 - 槽位大小：0x2000（8 KiB）
 - 槽位数量：8
 - 槽位地址：0x2A400 + slot * 0x2000
@@ -78,7 +78,7 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 
 ## K6A1 APP 镜像格式（第一版）
 
-新增的 tools/k6_app_image.py 定义了 K6 专用容器：
+新增的 tools/k6_app_image.py 定义了 K6 专用容器，文件总长度为 64 B 头部 + APP 代码镜像 + 可选资源数据：
 
 | 偏移 | 长度 | 字段 |
 |---:|---:|---|
@@ -90,18 +90,21 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 | 0x0C | 4 | Image CRC32 |
 | 0x10 | 2 | Entry offset |
 | 0x12 | 2 | Flags（bit 0 = committed） |
-| 0x14 | 16 | APP name |
-| 0x24 | 16 | APP version |
-| 0x34 | 4 | Link VMA |
-| 0x38 | 4 | BSS size |
-| 0x3C | 4 | Required capabilities |
+| 0x14 | 12 | APP name |
+| 0x20 | 12 | APP version |
+| 0x2C | 4 | Link VMA |
+| 0x30 | 4 | BSS size |
+| 0x34 | 4 | Required capabilities |
+| 0x38 | 4 | Asset size |
+| 0x3C | 4 | Asset CRC32 |
 
-头部后紧跟连续 ARM 镜像（text、rodata、初始化 data）；BSS 不放入文件，由驻留加载器清零。容器的头部结构借鉴了 FAP1，但使用独立的 K6A1 magic 和 K6 ABI，避免把原版 PY32 APP 误认为 K6 APP。
+头部后紧跟连续 ARM 镜像（text、rodata、初始化 data），再后面是只读资源区。驻留加载器只把代码镜像复制到 SRAM，BSS 清零；资源仍留在 EEPROM，APP 通过 asset_read() 分块读取，避免把车型表和字符串全部占用 RAM。容器有独立的 K6A1 magic 和 K6 ABI，不能当成原版 PY32 FAP1 APP。
 
 当前打包器校验：
 - 64 B 头部、magic、header/ABI 版本。
-- image CRC32。
-- 镜像文件不能超过 8 KiB 槽位。
+- 代码 CRC32 与资源 CRC32 分开校验。
+- 代码镜像+BSS 不能超过 6 KiB SRAM。
+- 头部+代码+资源不能超过 8 KiB EEPROM 槽位。
 - image + BSS 不能超过 6 KiB overlay SRAM。
 - entry offset 必须落在镜像范围内并半字对齐。
 
@@ -113,11 +116,15 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 
 下一阶段需要：
 1. 增加 K6 驻留 APP 管理器：槽位扫描、头部/CRC/ABI 校验、加载、BSS 清零、入口调用和退出恢复。
-2. 定义精简的 K6 APP API。第一版头文件和探针已经新增：FirmwareOverlay/apps/k6_app_api.h、app_probe.c、k6_app.ld；当前 API 提供显示、按键、时间、BK4819 寄存器读写和退出恢复接口。
+2. 定义精简的 K6 APP API。第一版头文件和探针已经新增：FirmwareOverlay/apps/k6_app_api.h、app_probe.c、k6_app.ld；当前 API 提供显示、按键、时间、只读接收配置/FIFO/RSSI、射频恢复和 EEPROM 资源读取接口；不提供任意 BK4819 寄存器写入，也不提供发射 API。
 3. 在主菜单增加独立 Apps 入口；后续可以增加用户自选快捷键，但默认不占用 F+7、F+0 等现有组合。
 4. 把 LBJ 解析/显示代码拆成真正独立的 K6 APP，完成独立 ARM 链接并确认总 RAM 不超过 overlay 配额。
-5. 增加 APP 安装器；安装必须先读取目标机 EEPROM 备份和确认候选区空闲，再写镜像，最后写 committed 头部。
+5. 增加 APP 安装器；优先复用 LOSEHU 0.13.2 已有的串口 EEPROM 命令：0x0514 建立会话，0x052B/0x051C 读 EEPROM，0x0538/0x051E 写 EEPROM。0x073x 是 F4HWN 外置 SPI Flash APP 命令，不可用在这个 K6 方案。安装器需先导出并校验目标机 EEPROM 备份，确认 0x2A400–0x3A400 空闲，再写 APP 数据；先写未提交头/数据，最后单独写 committed 标志。
 6. 研究 TDCSRX 协议/二进制并实现第二个 K6 APP。当前只确认拿到了上游 TDCSRX APP 二进制，尚未确认其 C 源码。
+
+## 上游 ENABLE_OVERLAY 的含义
+
+LOSEHU 0.13.2 的 ENABLE_OVERLAY / sram-overlay.c 是 MCU 内部 Flash 擦写代码的 SRAM 运行副本，与 F4HWN 外置 Flash APP 系统不是一回事；它不提供 `.app` 槽位、APP API 或运行菜单。本项目不能因为该宏存在就认为 K6 已有 APP 支持。
 
 ## 当前不声称的事项
 
