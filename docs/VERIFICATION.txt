@@ -129,3 +129,9 @@ The user's uploaded LOSEHU132HS(MDC尾音).bin was verified with the pinned 0.13
   Preserve existing daily/rescue firmware entries and both existing Bootloader stages;
   add LBJ as another entry through the current selector workflow instead of replacing them.
   First validate on a separate spare multi-system slot after RF and no-TX bench checks.
+
+TDCSRX RX 0.3 recovered parser research (separate from the K6 LBJ build):
+- GCC strict build and host tests: PASS.
+- AddressSanitizer + UndefinedBehaviorSanitizer host tests: PASS.
+- Covers synthetic 45-byte frame parsing, both accepted header variants, payload fields, CRC and malformed-frame rejection.
+- Does NOT verify RF demodulation, original BCH correction, DSP/bit framing, K6 hardware, or a complete TDCSRX firmware image.
