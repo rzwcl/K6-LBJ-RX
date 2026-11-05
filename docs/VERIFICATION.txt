@@ -1,17 +1,17 @@
 K6 LBJ RX candidate v0.2 - verification log
 Date: 2026-11-05
 
-## Full upstream firmware build: PASS
+## Latest full upstream firmware build: PASS
 
 GitHub Actions run:
-  https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610
-  commit: e9e939fc472b64f8ca9a73b4492f3d85e9aa7fde
+  https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054
+  commit: 5f7f41d7b39ddec33922c1833481896bf4a5e38a
   artifact: K6-LBJ-RX-LOSEHU132K
-  artifact ID: 13385797964
+  artifact ID: 13386116726
   artifact URL:
-    https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610/artifacts/13385797964
+    https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054/artifacts/13386116726
   artifact ZIP SHA-256:
-    7ce1e63b2ae95935ec6390530897d6924f3ff98685b006758c3c7132ee8b8ebf
+    01ef229eb6d61c27acdbbc8f014a8b9c8ac34d832fb8fd65cc6f12b2db1ee0e0
 
 Pinned upstream:
   repository: https://github.com/losehu/uv-k5-firmware-custom
@@ -35,6 +35,11 @@ Build profile:
   ENABLE_UART=0 (driver/uart.o linked only to satisfy unconditional UART_Send reference;
                  UART_Init and app/uart command parser are not compiled/started)
   ENABLE_DTMF_CALLING=0 (DTMF-only references in action.c and ui/main.c guarded)
+  ENABLE_VOX=0
+  ENABLE_ALARM=0
+  ENABLE_TX1750=0
+  ENABLE_CUSTOM_SIDEFUNCTIONS=0
+  ENABLE_SIDEFUNCTIONS_SEND=0
 
 Installer:
   upstream 0.13.2 dry-run: PASS
@@ -43,34 +48,46 @@ Installer:
   Makefile adds driver/uart.o only for UART_Send symbol
   linker adds --specs=nosys.specs and firmware.map/memory-usage output
   firmware.ld exports end and _end after .bss for nosys _sbrk
+  functions.c blocks FUNCTION_TRANSMIT in central FUNCTION_Select
+  app/app.c blocks PTT and all key handling while in FUNCTION_TRANSMIT
+  radio.c returns immediately from RADIO_SetTxParameters / RADIO_PrepareTX / RADIO_PrepareCssTX
   no bootloader, EEPROM layout, calibration, or stored radio settings were modified
 
 Link and memory:
   linker result: PASS
-  FLASH used: 53,908 / 61,440 bytes (87.74%)
-  FLASH free: 7,532 bytes
-  RAM used: 5,128 / 16,384 bytes (31.30%)
-  RAM free: 11,256 bytes
+  FLASH used: 53,476 / 61,440 bytes (87.04%)
+  FLASH free: 7,964 bytes
+  RAM used: 5,124 / 16,384 bytes (31.27%)
+  RAM free: 11,260 bytes
   arm-none-eabi-size:
-    text = 53,792
+    text = 53,360
     data = 116
-    bss  = 5,012
-    dec  = 58,920
-    hex  = 0xE628
+    bss  = 5,008
+    dec  = 58,484
+    hex  = 0xE474
   linker map: upstream/firmware.map
-  end = 0x20001388
-  _end = 0x20001388
+  end = 0x20001384
+  _end = 0x20001384
 
 Generated image:
-  raw firmware.bin: 53,908 bytes
-  packed LOSEHU132K.bin: 53,926 bytes (raw + 18 bytes)
-  CRC-16/XMODEM: 0x9DF8, verified
+  raw firmware.bin: 53,476 bytes
+  packed LOSEHU132K.bin: 53,494 bytes (raw + 18 bytes)
+  CRC-16/XMODEM: 0xAEB0, verified
   initial MSP: 0x20003FF0
   reset vector: 0x0000010B
   packed image SHA-256:
-    5a56a71a2529633daf82e85cd8e0e420bf8dc9a1aba8e92826bb42231ce3c8a0
+    4e4cb7c5da9665c9e5fc6741fa1eb36d5bfd3e5a37f83e6be8720b7686ea0481
 
-The user's uploaded LOSEHU132HS(MDC尾音).bin was also verified with the pinned 0.13.2 fw-pack.py:
+TX-path static audit (source-level only):
+  APP_Update PTT polling dispatches KEY_PTT to ProcessKey; ENABLE_LBJ early return blocks it.
+  Central FUNCTION_Select rejects FUNCTION_TRANSMIT before FUNCTION_Transmit executes.
+  ProcessKey also returns if gCurrentFunction is FUNCTION_TRANSMIT, blocking DTMF/side-tone key handling.
+  RADIO_SetTxParameters, RADIO_PrepareTX and RADIO_PrepareCssTX each have ENABLE_LBJ early returns.
+  VOX, alarm, 1750 Hz, custom TX side functions, DTMF calling, Messenger, MDC1200 and Aircopy are disabled.
+  Alarm/1750 tone calls are behind disabled feature macros; Aircopy TX setup is not compiled.
+  This is not a hardware RF no-transmit measurement; no-TX must still be checked on the actual radio.
+
+The user's uploaded LOSEHU132HS(MDC尾音).bin was verified with the pinned 0.13.2 fw-pack.py:
   packed: 61,458 bytes
   raw: 61,440 bytes (exactly 60 KiB)
   CRC-16/XMODEM: 0xEE94, verified
@@ -99,9 +116,8 @@ The user's uploaded LOSEHU132HS(MDC尾音).bin was also verified with the pinned
   No validation of real BK4819 preamble/sync capture, byte order, polarity,
   FIFO servicing latency, 2048-byte receive window, or long-burst reacquisition.
   No K6 LCD visual test, receive sensitivity test, or multi-system boot-slot test.
+  No hardware-level no-transmit measurement.
   No flashing, EEPROM changes, bootloader changes, or calibration writes.
-  TX path guards are compiled into this image, but a full hardware-level
-  no-transmit verification has not been performed.
 
 ## Safety status
 
