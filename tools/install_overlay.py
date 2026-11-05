@@ -49,6 +49,7 @@ def main() -> int:
     # Build every edited file in memory first. A failed anchor check leaves the tree untouched.
     makefile = read(root / "Makefile")
     app_c = read(root / "app/app.c")
+    action_c = read(root / "app/action.c")
     ui_h = read(root / "ui/ui.h")
     ui_c = read(root / "ui/ui.c")
     main_c = read(root / "main.c")
@@ -97,6 +98,21 @@ def main() -> int:
         "\tCFLAGS += -DENABLE_LBJ\nendif\n\n",
         "CFLAGS += -DENABLE_LBJ",
         "Makefile",
+    )
+
+    # ACTION_D_DCD references a VFO field that only exists when
+    # ENABLE_DTMF_CALLING is enabled. Keep the action harmless when disabled.
+    action_c = replace_once(
+        action_c,
+        "void ACTION_D_DCD(void) {\n    gRequestSaveChannel = 1;\n\n"
+        "    gTxVfo->DTMF_DECODING_ENABLE = !gTxVfo->DTMF_DECODING_ENABLE;\n"
+        "    DTMF_clear_RX();\n}",
+        "void ACTION_D_DCD(void) {\n#ifdef ENABLE_DTMF_CALLING\n"
+        "    gRequestSaveChannel = 1;\n\n"
+        "    gTxVfo->DTMF_DECODING_ENABLE = !gTxVfo->DTMF_DECODING_ENABLE;\n"
+        "    DTMF_clear_RX();\n#endif\n}",
+        "#ifdef ENABLE_DTMF_CALLING",
+        "app/action.c",
     )
 
     app_c = insert_once(
@@ -279,8 +295,8 @@ def main() -> int:
         shutil.copy2(OVERLAY / rel, target)
 
     for rel, content in (("Makefile", makefile), ("app/app.c", app_c),
-                         ("ui/ui.h", ui_h), ("ui/ui.c", ui_c), ("main.c", main_c),
-                         ("radio.c", radio_c)):
+                         ("app/action.c", action_c), ("ui/ui.h", ui_h), ("ui/ui.c", ui_c),
+                         ("main.c", main_c), ("radio.c", radio_c)):
         (root / rel).write_text(content, encoding="utf-8", newline="")
 
     print("LBJ source/UI overlay installed.")
