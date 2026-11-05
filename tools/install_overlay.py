@@ -111,7 +111,7 @@ def main() -> int:
         firmware_ld,
         "/* Check that there is enough RAM */",
         "\tend = .;\n\t_end = .;\n\n",
-        "    end = .;",
+        "end = .;",
         "firmware.ld",
     )
 
