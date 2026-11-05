@@ -5,6 +5,8 @@
 
 #define K6_APP_IO_CHUNK 64u
 
+static bool K6APP_HeaderBasicValid(const K6_AppHeader *h);
+
 static K6_AppHostServices g_k6_app_host;
 static K6_AppSlotInfo g_k6_app_active_slot;
 static bool g_k6_app_api_active;
