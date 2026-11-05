@@ -20,6 +20,7 @@ extern "C" {
 #define TDCSRX_CODEWORD_BITS    26u
 #define TDCSRX_CODEWORD_DATA    16u
 #define TDCSRX_CODEWORD_PARITY  10u
+#define TDCSRX_BCH_GENERATOR_POLY 0x05b9u
 
 typedef struct {
     uint8_t signal_machine;       /* payload[0] & 0x0f */
@@ -70,10 +71,9 @@ bool tdcsrx_parse_frame(const uint8_t *frame, size_t frame_length,
 
 /*
  * Exact polynomial-remainder operation observed in TDCSRX RX 0.3 machine code.
- * WARNING: the loaded 32-bit literal is 0x0000b905 on the little-endian target.
- * Its single-bit syndrome columns collide (only 16 unique values for 26 bit
- * positions). Preserve for forensic comparison; do not silently substitute it
- * into a new receiver without resolving the discrepancy.
+ * The LDR at code offset 0x1dc resolves to the literal at code offset 0x200:
+ * bytes B9 05 00 00, i.e. little-endian uint32_t 0x000005b9.
+ * This produces 26 distinct single-bit syndrome columns, matching BCH(26,16).
  */
 uint16_t tdcsrx_original_syndrome(uint32_t codeword26);
 
