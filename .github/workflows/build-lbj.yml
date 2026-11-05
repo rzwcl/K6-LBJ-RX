@@ -1,9 +1,9 @@
-name: Build K6 LBJ RX
+name: Legacy standalone LBJ firmware build (not for K6 APP installation)
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/k6-overlay-apps]
+    branches: [main]
     paths:
       - "FirmwareOverlay/**"
       - "tools/**"
@@ -35,9 +35,6 @@ jobs:
           python3 tools/verify_losehu_packed.py "LOSEHU132HS(MDC尾音).bin" \
             --packer upstream/fw-pack.py \
             --report baseline-firmware-report.json
-
-      - name: Test K6 APP image container
-        run: python3 -m unittest discover -s tests -p 'test_k6_app_image.py' -v
 
       - name: Validate overlay integration anchors
         run: python3 tools/install_overlay.py upstream --dry-run
