@@ -34,6 +34,8 @@ typedef struct {
  * The host firmware must tune the radio to the target 450 MHz channel first.
  */
 bool TDCS_RadioInit(const TDCS_RadioOps *ops);
+/* Reapply FFSK settings after the host firmware retunes/reconfigures the BK4819. */
+bool TDCS_RadioReconfigure(void);
 
 /* Call from the existing BK4819 CheckRadioInterrupts() path. */
 void TDCS_RadioHandleInterrupt(uint16_t interrupt_bits);
