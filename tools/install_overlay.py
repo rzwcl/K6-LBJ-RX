@@ -294,7 +294,7 @@ def main() -> int:
         app_c,
         "static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {",
         "\n#ifdef ENABLE_LBJ\n    /* Dedicated LBJ image: do not allow PTT/TX from any screen. */\n"
-        "    if (Key == KEY_PTT) return;\n#endif\n",
+        "    if (Key == KEY_PTT || gCurrentFunction == FUNCTION_TRANSMIT) return;\n#endif\n",
         "Dedicated LBJ image: do not allow PTT/TX",
         "app/app.c",
     )
