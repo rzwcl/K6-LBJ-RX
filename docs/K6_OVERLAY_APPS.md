@@ -57,15 +57,15 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 
 ### SRAM
 
-已单独从干净的 upstream 0.13.2（commit 021656ea13226d349e31acd6eb21079c5bab64c7）构建 132HS 特征基线，配置为 ENABLE_CHINESE_FULL=4、ENABLE_PINYIN=0、ENABLE_4732=1；没有运行 LBJ 修改脚本，没有禁用 VOX、DTMF 等功能。干净 ELF 的链接结果：
+已单独从干净的 upstream 0.13.2（commit 021656ea13226d349e31acd6eb21079c5bab64c7）构建 132HS 特征基线，配置为 ENABLE_CHINESE_FULL=4、ENABLE_PINYIN=1、ENABLE_4732=1；没有运行 LBJ 修改脚本，没有禁用 VOX、DTMF 等功能。干净 ELF 的链接结果：
 
 - SRAM：0x20000000–0x20003FFF（16 KiB）
-- .data：144 B，VMA 0x20000000–0x20000090
-- .bss：2,612 B，VMA 0x20000090–0x20000AC4
-- 链接脚本保留的最小栈区：128 B，0x20000AC4–0x20000B44
+- .data：148 B，VMA 0x20000000–0x20000094
+- .bss：2,644 B，VMA 0x20000094–0x20000AE8
+- 链接脚本保留的最小栈区：128 B，0x20000AE8–0x20000B68
 - 初始栈顶：0x20004000
 
-基线报告：Actions run 42019618832 的 artifact 只包含内存报告，没有上传任何固件 BIN。
+基线报告：Actions run 42020554230 的 artifact 只包含内存报告，没有上传任何固件 BIN。该构建来自干净 upstream tag，不包含你原始 BIN 文件名中标注的 MDC 尾音定制改动，因此是同特征布局参考，不声称与原 BIN 逐字节/逐功能相同。
 
 当前规划的 APP overlay SRAM 区：
 
@@ -74,7 +74,7 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 - 结束：0x20003000
 - 留给主栈的上部空间：0x1000（4 KiB）
 
-按干净基线计算，0x20000AC4 到 APP 起始地址 0x20001800 之间有 3,388 B 空隙；APP 区结束地址 0x20003000 到初始栈顶 0x20004000 之间保留 4 KiB 给主固件/APP 调用栈。APP 的镜像、初始化数据和 BSS 总量必须不超过 6 KiB。4 KiB 栈预算尚未通过运行时最大栈深度测量，必须在 APP 运行测试阶段继续验证。
+按干净基线计算，0x20000AE8 到 APP 起始地址 0x20001800 之间有 3,352 B 空隙；APP 区结束地址 0x20003000 到初始栈顶 0x20004000 之间保留 4 KiB 给主固件/APP 调用栈。APP 的镜像、初始化数据和 BSS 总量必须不超过 6 KiB。4 KiB 栈预算尚未通过运行时最大栈深度测量，必须在 APP 运行测试阶段继续验证。
 
 ## K6A1 APP 镜像格式（第一版）
 
@@ -105,7 +105,7 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 - image + BSS 不能超过 6 KiB overlay SRAM。
 - entry offset 必须落在镜像范围内并半字对齐。
 
-打包器目前只处理容器，不代表 APP 已能在电台上运行。
+固定 VMA 的 K6 APP 探针已通过 ARM 编译、链接和封装：代码 236 B、BSS 4 B、总 SRAM 240/6,144 B，带头文件后 300/8,192 B。Actions run 42020338961 只上传 probe report 和 linker map。探针只验证构建/封装路径，不代表 APP 已能在电台上运行。
 
 ## 当前代码状态
 
