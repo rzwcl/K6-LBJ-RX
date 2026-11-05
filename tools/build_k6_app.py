@@ -45,6 +45,7 @@ def main() -> int:
     parser.add_argument("--name", default="APP PROBE")
     parser.add_argument("--version", default="0.1")
     parser.add_argument("--api-min", type=int, default=1)
+    parser.add_argument("--assets", type=Path, default=ROOT / "FirmwareOverlay/apps/app_probe_assets.txt")
     args = parser.parse_args()
 
     gcc = shutil.which(args.gcc)
@@ -120,6 +121,7 @@ def main() -> int:
     entry_offset = (entry_symbol & ~1) - DEFAULT_VMA
     bss_size = bss_end - bss_start
     image = raw_bin.read_bytes()
+    assets = args.assets.read_bytes() if args.assets else b""
     expected_image_size = image_end - DEFAULT_VMA
 
     if expected_image_size != len(image):
@@ -137,6 +139,7 @@ def main() -> int:
         image,
         name=args.name,
         version=args.version,
+        assets=assets,
         api_min=args.api_min,
         entry_offset=entry_offset,
         link_vma=DEFAULT_VMA,
@@ -162,6 +165,8 @@ def main() -> int:
         "slot_file_size": len(packed_bytes),
         "slot_file_limit": DEFAULT_SLOT_SIZE,
         "crc32": f"0x{info.image_crc32:08X}",
+        "asset_size": info.asset_size,
+        "asset_crc32": f"0x{info.asset_crc32:08X}",
         "sha256": hashlib.sha256(packed_bytes).hexdigest(),
         "paths": {
             "elf": str(elf),
@@ -177,7 +182,7 @@ def main() -> int:
     for key in (
         "name", "version", "abi_major", "api_min", "link_vma", "entry_offset",
         "image_size", "bss_size", "image_plus_bss", "overlay_ram_limit",
-        "slot_file_size", "slot_file_limit", "crc32", "sha256"
+        "asset_size", "asset_crc32", "slot_file_size", "slot_file_limit", "crc32", "sha256"
     ):
         print(f"{key}: {report[key]}")
     print(f"report: {report_path}")
