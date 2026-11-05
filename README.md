@@ -1,3 +1,5 @@
+> **长期交接入口：** 新会话请先阅读 [docs/CONTINUATION.md](docs/CONTINUATION.md)，以 GitHub `main` 分支为准继续开发。该文档记录仓库文件、验证边界、缺失的完整 LOSEHU 基础源码和下一步构建顺序。
+
 # K6 LBJ 独立接收固件 v0.2（UI rev3 + BK4819 FSK 适配）
 
 目标设备：老款泉盛 K6，DP32G030 + BK4819。底座按 `losehu/uv-k5-firmware-custom` 的老款 K5/K6 源码接口编写。
