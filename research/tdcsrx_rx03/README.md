@@ -4,9 +4,9 @@
 
 ## 文件
 
-- `tdcsrx_recovered_protocol.c/.h`：CRC-16/XMODEM、45 字节帧验证、32 字节 TDCS payload 字段提取，以及原版 BCH 余数运算的可读重建。
+- `tdcsrx_recovered_protocol.c/.h`：CRC-16/XMODEM、45 字节帧验证、32 字节 TDCS payload 字段提取，以及原版 BCH(26,16) 余数运算与单比特纠错的可读重建。
 - `test_tdcsrx_recovered.c`：只使用合成帧，不依赖用户录音；覆盖两种帧头、全部已恢复字段、CRC/帧头/长度拒绝及 BCH syndrome 对照。
-- `TDCSRX_REVERSE_ENGINEERING.md`：二进制来源、FAP1/API 信息、接收执行模型、寄存器配置、帧结构、字段偏移、BCH 异常和剩余工作。
+- `TDCSRX_REVERSE_ENGINEERING.md`：二进制来源、FAP1/API 信息、接收执行模型、寄存器配置、帧结构、字段偏移、BCH 实际常量和采样解调链分析。
 - `Makefile`：本目录独立测试入口。
 
 ## 编译测试
@@ -32,9 +32,12 @@ cc -std=c11 -Wall -Wextra -Werror -pedantic -O2 \
 
 尚未恢复为可编译 C 模块：`0x950` 音频 DSP、完整的 9600 Hz 采样与 26-bit 字码流同步/组帧代码、完整 UI/按键/设置逻辑。当前代码不能单独接收射频，也不能直接编进 K6 固件。
 
-## BCH 注意事项
+## BCH 已确认
 
-目标机器码中的 `0xB905` 运算在 26 个单比特位置上只有 16 个不同 syndrome；独立参考多项式 `0x05B9` 有 26 个不同 syndrome。当前源码同时保留目标字面值与参考运算，**没有用参考值覆盖目标值**。在查明该差异前，不可把任意一种算法作为 K6 实际接收链的已验证纠错实现。
+目标机器码在代码偏移 `0x1DC` 的 LDR 读取代码偏移 `0x200` 的常量池。
+四字节 `B9 05 00 00` 的完整 little-endian 值是 `0x000005B9`。
+原版纠错使用 `0x05B9`，26 个单比特 syndrome 全部唯一。测试覆盖全部
+26 个单比特错误位置并验证可纠正回原 16-bit 数据。
 
 ## K6 项目接续规则
 
