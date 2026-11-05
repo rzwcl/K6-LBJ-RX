@@ -89,6 +89,38 @@ bool K6APP_ReadSlotInfo(K6_AppEEPROMRead read_eeprom,
     return true;
 }
 
+bool K6APP_RefreshSlotInfo(K6_AppEEPROMRead read_eeprom,
+                           const K6_AppSlotInfo *cached,
+                           K6_AppSlotInfo *fresh)
+{
+    K6_AppSlotInfo current;
+
+    if (cached == NULL || fresh == NULL ||
+        !K6APP_ReadSlotInfo(read_eeprom, cached->slot_index, &current))
+        return false;
+
+    if (current.slot_address != cached->slot_address ||
+        memcmp(&current.header, &cached->header,
+               sizeof(current.header)) != 0)
+        return false;
+
+    *fresh = current;
+    return true;
+}
+
+K6_AppEntry K6APP_GetEntry(const K6_AppSlotInfo *info, void *overlay_ram)
+{
+    uintptr_t address;
+
+    if (info == NULL || overlay_ram == NULL ||
+        !K6APP_HeaderBasicValid(&info->header))
+        return NULL;
+
+    address = (uintptr_t)overlay_ram + info->header.entry_offset;
+    address |= (uintptr_t)1u; /* Cortex-M Thumb-state entry point. */
+    return (K6_AppEntry)address;
+}
+
 bool K6APP_ReadAsset(K6_AppEEPROMRead read_eeprom,
                      const K6_AppSlotInfo *info,
                      uint32_t offset,
