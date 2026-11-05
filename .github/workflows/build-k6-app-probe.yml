@@ -1,0 +1,43 @@
+name: Build K6-native APP probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/k6-overlay-apps]
+    paths:
+      - "FirmwareOverlay/apps/**"
+      - "tools/k6_app_image.py"
+      - "tools/build_k6_app.py"
+      - "tests/test_k6_app_image.py"
+      - ".github/workflows/build-k6-app-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-app-probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout APP research branch
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+      - name: Test K6A1 container
+        run: python3 -m unittest discover -s tests -p 'test_k6_app_image.py' -v
+
+      - name: Compile, link and package the fixed-VMA APP probe
+        run: python3 tools/build_k6_app.py --out-dir build/k6-app-probe
+
+      - name: Upload probe report and linker map only
+        uses: actions/upload-artifact@v4
+        with:
+          name: K6-native-APP-probe-report
+          if-no-files-found: error
+          path: |
+            build/k6-app-probe/report.json
+            build/k6-app-probe/app_probe.map
