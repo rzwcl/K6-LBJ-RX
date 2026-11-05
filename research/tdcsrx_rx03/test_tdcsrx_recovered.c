@@ -128,42 +128,62 @@ static void test_rejections(void)
     assert(!tdcsrx_parse_frame(frame, sizeof(frame), NULL));
 }
 
-static void test_bch_syndrome_columns(void)
+static uint32_t make_bch_codeword(uint16_t data)
 {
-    uint16_t original[26];
-    uint16_t reference[26];
-    unsigned int unique_original = 0u;
-    unsigned int unique_reference = 0u;
+    uint32_t shifted = (uint32_t)data << TDCSRX_CODEWORD_PARITY;
+    return shifted | tdcsrx_original_syndrome(shifted);
+}
+
+static void test_bch_syndrome_and_single_bit_correction(void)
+{
+    static const uint16_t data_words[] = {
+        0x0000u, 0x0001u, 0x1234u, 0x5aa5u, 0xa55au, 0xffffu
+    };
+    uint16_t syndromes[TDCSRX_CODEWORD_BITS];
     unsigned int i;
+    unsigned int unique = 0u;
 
-    for (i = 0u; i < 26u; ++i) {
+    for (i = 0u; i < TDCSRX_CODEWORD_BITS; ++i) {
         unsigned int j;
-        original[i] = tdcsrx_original_syndrome(1u << i);
-        reference[i] = tdcsrx_reference_syndrome_5b9(1u << i);
-
+        syndromes[i] = tdcsrx_original_syndrome(1u << i);
+        assert(syndromes[i] == tdcsrx_reference_syndrome_5b9(1u << i));
         for (j = 0u; j < i; ++j) {
-            if (original[j] == original[i]) break;
+            if (syndromes[j] == syndromes[i]) break;
         }
-        if (j == i) ++unique_original;
-
-        for (j = 0u; j < i; ++j) {
-            if (reference[j] == reference[i]) break;
-        }
-        if (j == i) ++unique_reference;
+        if (j == i) ++unique;
     }
+    assert(unique == 26u);
 
-    assert(unique_original == 16u);
-    assert(unique_reference == 26u);
+    for (i = 0u; i < sizeof(data_words) / sizeof(data_words[0]); ++i) {
+        uint32_t codeword = make_bch_codeword(data_words[i]);
+        int corrected_bit = 99;
+        unsigned int bit;
+
+        assert(tdcsrx_original_syndrome(codeword) == 0u);
+        assert(tdcsrx_original_bch_decode(codeword, &corrected_bit) == data_words[i]);
+        assert(corrected_bit == -1);
+
+        for (bit = 0u; bit < TDCSRX_CODEWORD_BITS; ++bit) {
+            uint32_t damaged = codeword ^ (1u << bit);
+            corrected_bit = -1;
+            assert(tdcsrx_original_bch_decode(damaged, &corrected_bit) == data_words[i]);
+            assert(corrected_bit == (int)bit);
+        }
+    }
 
     {
-        int corrected_bit = 0;
-        assert(tdcsrx_original_bch_decode(0u, &corrected_bit) == 0u);
-        assert(corrected_bit == -1);
+        uint32_t value = 0x013579bdu;
+        unsigned int n;
+        for (n = 0u; n < 128u; ++n) {
+            value = value * 1664525u + 1013904223u;
+            value &= 0x03ffffffu;
+            assert(tdcsrx_original_syndrome(value) ==
+                   tdcsrx_reference_syndrome_5b9(value));
+        }
     }
 
-    printf("BCH syndrome columns: target literal 0xB905 = %u/26 unique; "
-           "reference 0x05B9 = %u/26 unique\n",
-           unique_original, unique_reference);
+    printf("Original TDCSRX BCH polynomial 0x05B9: %u/26 unique syndromes; "
+           "all 26 single-bit positions corrected: PASS\n", unique);
 }
 
 int main(void)
@@ -172,7 +192,7 @@ int main(void)
     test_parse_variant_1f();
     test_parse_variant_ff();
     test_rejections();
-    test_bch_syndrome_columns();
+    test_bch_syndrome_and_single_bit_correction();
     puts("CRC-16/XMODEM: PASS");
     puts("45-byte target-frame parser, both header variants, all fields: PASS");
     puts("CRC/header/length/null rejection: PASS");
