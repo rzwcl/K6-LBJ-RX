@@ -42,3 +42,10 @@ cc -std=c11 -Wall -Wextra -Werror -pedantic -O2 \
 ## K6 项目接续规则
 
 此目录属于研究资料，不是 `FirmwareOverlay`。不要把早期 `k6-full-firmware` 分支中 `TDCS_PAYLOAD_SIZE=40` 的实验代码直接并入 `main`：该负载长度与这里从 TDCSRX 0.3 帧解析器恢复出的 32 字节负载不一致。先完成原始接收链 DSP/组帧逆向，再针对 K6 的 DP32G030 + BK4819 改写驱动与 UI。
+
+## 同步与码字收集
+
+同步器和码字收集已经从原版 `0xA80` 重建为 `tdcsrx_recovered_stream.c/.h`。
+它计算正常/反相的 31/32 位四种 Hamming 距离，容许最多 2 位错误；锁定后按极性处理，26 bit MSB-first 形成一个 BCH(26,16) 字。
+合成测试覆盖正常/反相同步、两位同步误码容错、三位误码拒绝，以及单比特纠错后的 16-bit 字恢复。
+完整帧计数/结束/回调时序和音频 DSP 的 C 重建仍未完成。
