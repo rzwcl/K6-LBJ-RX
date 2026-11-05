@@ -144,6 +144,7 @@ static void test_queue_overflow_drops_newest(void)
     bool inverted;
     TDCS_RadioStats stats;
 
+    assert(TDCS_RadioInit(&kMockOps));
     make_packet(source, 0x50u);
     feed_packet(source, false);
     feed_packet(source, false);
