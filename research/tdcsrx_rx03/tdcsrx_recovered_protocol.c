@@ -103,12 +103,12 @@ uint16_t tdcsrx_original_syndrome(uint32_t codeword26)
 
     /*
      * Literal and loop bounds reproduced from offsets 0x1d4..0x1fc:
-     * r3=25 down through 10; if bit r3 is set, xor (0xb905 << (r3-10)).
+     * r3=25 down through 10; if bit r3 is set, xor (0x05b9 << (r3-10)).
      * The target then retains the low 10 bits.
      */
     for (bit = 25; bit >= 10; --bit) {
         if ((value & (1u << (unsigned)bit)) != 0u)
-            value ^= (uint32_t)(0x0000b905u << (unsigned)(bit - 10));
+            value ^= (uint32_t)(0x000005b9u << (unsigned)(bit - 10));
     }
     return (uint16_t)(value & 0x03ffu);
 }
