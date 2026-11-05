@@ -9,6 +9,7 @@ on:
       - "tools/k6_app_image.py"
       - "tools/build_k6_app.py"
       - "tests/test_k6_app_image.py"
+      - "tests/test_k6_app_runtime.c"
       - ".github/workflows/build-k6-app-probe.yml"
 
 permissions:
