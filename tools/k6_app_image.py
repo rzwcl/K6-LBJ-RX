@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Pack and inspect K6-native overlay application images.
 
-The K6A1 container is intentionally not binary-compatible with F4HWN FAP1
-applications. It uses the same general idea (a small header plus a position-
-independent-in-practice, fixed-VMA ARM image), but a separate K6 API/ABI.
+K6A1 is deliberately not compatible with the PY32/F4HWN FAP1 format.
 
-Image layout:
-    0x00..0x3F  64-byte little-endian K6A1 header
-    0x40..      raw application image (.text + .rodata + initialized .data)
+EEPROM slot layout:
+    0x00..0x3F  64-byte K6A1 header
+    0x40..      linked ARM image (.text + .rodata + initialized .data)
+    after image optional read-only assets (left in EEPROM, not copied to SRAM)
 
-The BSS is not stored in the file; its byte count is recorded in the header and
-cleared by the resident K6 loader after copying the image to SRAM.
+The resident loader copies only the linked image into SRAM, clears the recorded
+BSS, and exposes the asset tail through api->asset_read(). This keeps large
+lookup tables and strings out of the 6 KiB overlay SRAM budget.
 """
 from __future__ import annotations
 
@@ -25,14 +25,21 @@ MAGIC = b"K6A1"
 HEADER_VERSION = 1
 ABI_MAJOR = 1
 API_LEVEL = 1
-HEADER = struct.Struct("<4sHBBIIHH16s16sIII")
+NAME_LEN = 12
+VERSION_LEN = 12
+
+# 64 bytes, little-endian:
+# magic, header ver, ABI, API, code size, code CRC32, entry, flags,
+# name[12], version[12], link VMA, BSS size, capability mask,
+# asset size, asset CRC32.
+HEADER = struct.Struct("<4sHBBIIHH12s12sIIIII")
 HEADER_SIZE = HEADER.size
+
 DEFAULT_LINK_VMA = 0x20001800
-DEFAULT_RAM_LIMIT = 0x1800       # 6 KiB overlay; leave 4 KiB for main stack
-DEFAULT_SLOT_SIZE = 0x2000       # 8 KiB EEPROM slot
+DEFAULT_RAM_LIMIT = 0x1800       # 6 KiB overlay; 4 KiB below initial SP reserved for stack
+DEFAULT_SLOT_SIZE = 0x2000       # 8 KiB per EEPROM slot
 DEFAULT_SLOT_COUNT = 8
 
-# Header flag bit 0 is set only after the complete image has been written.
 FLAG_COMMITTED = 0x0001
 
 
@@ -52,7 +59,10 @@ class AppImage:
     link_vma: int
     bss_size: int
     required_caps: int
+    asset_size: int
+    asset_crc32: int
     payload: bytes
+    assets: bytes
 
 
 def _encode_fixed(text: str, length: int, field: str) -> bytes:
@@ -74,6 +84,7 @@ def build_image(
     *,
     name: str,
     version: str,
+    assets: bytes = b"",
     api_min: int = API_LEVEL,
     entry_offset: int = 0,
     flags: int = FLAG_COMMITTED,
@@ -85,9 +96,14 @@ def build_image(
 ) -> bytes:
     if not payload:
         raise ImageError("application payload is empty")
-    if len(payload) + HEADER_SIZE > slot_size:
+    if link_vma != DEFAULT_LINK_VMA:
         raise ImageError(
-            f"image is {len(payload) + HEADER_SIZE} bytes; slot limit is {slot_size}"
+            f"link_vma must be 0x{DEFAULT_LINK_VMA:08X} for K6 APP ABI v1"
+        )
+    if HEADER_SIZE + len(payload) + len(assets) > slot_size:
+        raise ImageError(
+            f"header+image+assets is {HEADER_SIZE + len(payload) + len(assets)} bytes; "
+            f"slot limit is {slot_size}"
         )
     if len(payload) + bss_size > ram_limit:
         raise ImageError(
@@ -101,36 +117,44 @@ def build_image(
         raise ImageError("entry_offset must be halfword-aligned")
     if not 0 <= flags <= 0xFFFF:
         raise ImageError("flags must be in 0..65535")
-    if not 0 <= link_vma <= 0xFFFFFFFF:
-        raise ImageError("link_vma must be a 32-bit address")
     if not 0 <= bss_size <= 0xFFFFFFFF:
         raise ImageError("bss_size must be a 32-bit size")
     if not 0 <= required_caps <= 0xFFFFFFFF:
         raise ImageError("required_caps must be a 32-bit bitmask")
+    if len(assets) > 0xFFFFFFFF:
+        raise ImageError("asset_size exceeds the format limit")
 
-    checksum = zlib.crc32(payload) & 0xFFFFFFFF
+    code_crc = zlib.crc32(payload) & 0xFFFFFFFF
+    asset_crc = zlib.crc32(assets) & 0xFFFFFFFF if assets else 0
     header = HEADER.pack(
         MAGIC,
         HEADER_VERSION,
         ABI_MAJOR,
         api_min,
         len(payload),
-        checksum,
+        code_crc,
         entry_offset,
         flags,
-        _encode_fixed(name, 16, "name"),
-        _encode_fixed(version, 16, "version"),
+        _encode_fixed(name, NAME_LEN, "name"),
+        _encode_fixed(version, VERSION_LEN, "version"),
         link_vma,
         bss_size,
         required_caps,
+        len(assets),
+        asset_crc,
     )
-    return header + payload
+    return header + payload + assets
 
 
-def parse_image(data: bytes, *, ram_limit: int = DEFAULT_RAM_LIMIT,
-                slot_size: int = DEFAULT_SLOT_SIZE) -> AppImage:
+def parse_image(
+    data: bytes,
+    *,
+    ram_limit: int = DEFAULT_RAM_LIMIT,
+    slot_size: int = DEFAULT_SLOT_SIZE,
+) -> AppImage:
     if len(data) < HEADER_SIZE:
         raise ImageError(f"file is shorter than the {HEADER_SIZE}-byte header")
+
     (
         magic,
         header_version,
@@ -145,6 +169,8 @@ def parse_image(data: bytes, *, ram_limit: int = DEFAULT_RAM_LIMIT,
         link_vma,
         bss_size,
         required_caps,
+        asset_size,
+        asset_crc32,
     ) = HEADER.unpack_from(data)
 
     if magic != MAGIC:
@@ -153,10 +179,16 @@ def parse_image(data: bytes, *, ram_limit: int = DEFAULT_RAM_LIMIT,
         raise ImageError(f"unsupported header version {header_version}")
     if abi_major != ABI_MAJOR:
         raise ImageError(f"unsupported K6 APP ABI major {abi_major}")
+    if link_vma != DEFAULT_LINK_VMA:
+        raise ImageError(f"wrong K6 APP link VMA 0x{link_vma:08X}")
     if not (flags & FLAG_COMMITTED):
         raise ImageError("image is not marked committed")
-    if image_size == 0 or HEADER_SIZE + image_size != len(data):
-        raise ImageError("payload length does not match the header")
+
+    expected_size = HEADER_SIZE + image_size + asset_size
+    if image_size == 0 or expected_size != len(data):
+        raise ImageError(
+            f"header sizes require {expected_size} bytes, file contains {len(data)}"
+        )
     if len(data) > slot_size:
         raise ImageError(f"file is {len(data)} bytes; slot limit is {slot_size}")
     if image_size + bss_size > ram_limit:
@@ -166,11 +198,23 @@ def parse_image(data: bytes, *, ram_limit: int = DEFAULT_RAM_LIMIT,
     if entry_offset >= image_size or entry_offset & 1:
         raise ImageError("entry offset is invalid or not halfword-aligned")
 
-    payload = data[HEADER_SIZE:]
-    actual_crc = zlib.crc32(payload) & 0xFFFFFFFF
-    if actual_crc != image_crc32:
+    payload_start = HEADER_SIZE
+    payload_end = payload_start + image_size
+    payload = data[payload_start:payload_end]
+    assets = data[payload_end:]
+
+    actual_code_crc = zlib.crc32(payload) & 0xFFFFFFFF
+    if actual_code_crc != image_crc32:
         raise ImageError(
-            f"CRC32 mismatch: header 0x{image_crc32:08X}, actual 0x{actual_crc:08X}"
+            f"code CRC32 mismatch: header 0x{image_crc32:08X}, "
+            f"actual 0x{actual_code_crc:08X}"
+        )
+
+    actual_asset_crc = zlib.crc32(assets) & 0xFFFFFFFF if assets else 0
+    if actual_asset_crc != asset_crc32:
+        raise ImageError(
+            f"asset CRC32 mismatch: header 0x{asset_crc32:08X}, "
+            f"actual 0x{actual_asset_crc:08X}"
         )
 
     return AppImage(
@@ -184,7 +228,10 @@ def parse_image(data: bytes, *, ram_limit: int = DEFAULT_RAM_LIMIT,
         link_vma=link_vma,
         bss_size=bss_size,
         required_caps=required_caps,
+        asset_size=asset_size,
+        asset_crc32=asset_crc32,
         payload=payload,
+        assets=assets,
     )
 
 
@@ -192,12 +239,29 @@ def _parse_int(value: str) -> int:
     return int(value, 0)
 
 
+def _report(info: AppImage, file_size: int, ram_limit: int, slot_size: int) -> None:
+    print(f"Name:         {info.name}")
+    print(f"Version:      {info.version}")
+    print(f"ABI/API:      {ABI_MAJOR}/{info.api_min}")
+    print(f"Link VMA:     0x{info.link_vma:08X}")
+    print(f"Entry offset: 0x{info.entry_offset:04X}")
+    print(f"Image:        {info.image_size} bytes")
+    print(f"BSS:          {info.bss_size} bytes")
+    print(f"RAM total:    {info.image_size + info.bss_size}/{ram_limit} bytes")
+    print(f"Assets:       {info.asset_size} bytes CRC32=0x{info.asset_crc32:08X}")
+    print(f"File:         {file_size}/{slot_size} bytes")
+    print(f"Code CRC32:   0x{info.image_crc32:08X}")
+    print(f"Capabilities: 0x{info.required_caps:08X}")
+
+
 def cmd_pack(args: argparse.Namespace) -> int:
     payload = Path(args.bin).read_bytes()
+    assets = Path(args.assets).read_bytes() if args.assets else b""
     image = build_image(
         payload,
         name=args.name,
         version=args.version,
+        assets=assets,
         api_min=args.api_min,
         entry_offset=args.entry_offset,
         link_vma=args.link_vma,
@@ -211,16 +275,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
     out.write_bytes(image)
     info = parse_image(image, ram_limit=args.ram_limit, slot_size=args.slot_size)
     print(f"Output:       {out}")
-    print(f"Name:         {info.name}")
-    print(f"Version:      {info.version}")
-    print(f"ABI/API:      {ABI_MAJOR}/{info.api_min}")
-    print(f"Link VMA:     0x{info.link_vma:08X}")
-    print(f"Entry offset: 0x{info.entry_offset:04X}")
-    print(f"Image:        {info.image_size} bytes")
-    print(f"BSS:          {info.bss_size} bytes")
-    print(f"RAM total:    {info.image_size + info.bss_size}/{args.ram_limit} bytes")
-    print(f"File:         {len(image)}/{args.slot_size} bytes")
-    print(f"CRC32:        0x{info.image_crc32:08X}")
+    _report(info, len(image), args.ram_limit, args.slot_size)
     return 0
 
 
@@ -228,17 +283,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     data = Path(args.image).read_bytes()
     info = parse_image(data, ram_limit=args.ram_limit, slot_size=args.slot_size)
     print(f"Valid K6A1 image: {args.image}")
-    print(f"Name:         {info.name}")
-    print(f"Version:      {info.version}")
-    print(f"ABI/API:      {ABI_MAJOR}/{info.api_min}")
-    print(f"Link VMA:     0x{info.link_vma:08X}")
-    print(f"Entry offset: 0x{info.entry_offset:04X}")
-    print(f"Image:        {info.image_size} bytes")
-    print(f"BSS:          {info.bss_size} bytes")
-    print(f"RAM total:    {info.image_size + info.bss_size}/{args.ram_limit} bytes")
-    print(f"File:         {len(data)}/{args.slot_size} bytes")
-    print(f"CRC32:        0x{info.image_crc32:08X}")
-    print(f"Capabilities: 0x{info.required_caps:08X}")
+    _report(info, len(data), args.ram_limit, args.slot_size)
     return 0
 
 
@@ -251,6 +296,7 @@ def make_parser() -> argparse.ArgumentParser:
     pack.add_argument("--out", required=True, help="output .k6app file")
     pack.add_argument("--name", required=True)
     pack.add_argument("--version", required=True)
+    pack.add_argument("--assets", help="optional file stored in EEPROM and exposed by asset_read")
     pack.add_argument("--api-min", type=int, default=API_LEVEL)
     pack.add_argument("--entry-offset", type=_parse_int, default=0)
     pack.add_argument("--link-vma", type=_parse_int, default=DEFAULT_LINK_VMA)
