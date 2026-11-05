@@ -43,6 +43,9 @@ jobs:
       - name: Install LBJ overlay into isolated upstream checkout
         run: python3 tools/install_overlay.py upstream
 
+      - name: Verify overlay installation is idempotent
+        run: python3 tools/install_overlay.py upstream --dry-run
+
       - name: Build Chinese LBJ receiver firmware
         working-directory: upstream
         run: |
