@@ -203,7 +203,9 @@ def main() -> int:
     )
     app_c = insert_once(
         app_c,
-        "    if (gCurrentFunction == FUNCTION_POWER_SAVE)\n",
+        "    if (gCurrentFunction == FUNCTION_POWER_SAVE)\n"
+        "        FUNCTION_Select(FUNCTION_FOREGROUND); //OK\n\n"
+        "    gBatterySaveCountdown_10ms = battery_save_count_10ms;",
         "\n#ifdef ENABLE_TDCSRX\n"
         "    /* EXIT toggles back from the ordinary VFO screen to TDCS RX. */\n"
         "    if (gScreenToDisplay == DISPLAY_MAIN && Key == KEY_EXIT &&\n"
