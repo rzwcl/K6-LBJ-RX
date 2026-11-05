@@ -44,6 +44,10 @@ LBJ 固件是独立接收系统，不是把当前 132HS 所有功能原样保留
 
 安装脚本已调整为用正则匹配 main.c 的 VFO 初始化调用对，兼容该标签实际空行格式。仍须在真实 checkout 上执行 dry-run、安装、构建；锚点核对不能代替编译。
 
+## LBJ 构建后缀 K
+
+作者 0.13.2 Makefile 在 `ENABLE_CHINESE_FULL=4`、`ENABLE_PINYIN=0`、`ENABLE_4732=0` 时生成后缀 `K`。因此 LBJ 输出名为 `LOSEHU132K.bin`：保留完整中文显示字库，不带拼音输入，也不带 SI4732 接收功能。它与用户上传的 `LOSEHU132HS` 是不同功能配置，符合独立 LBJ 接收系统的裁剪目标。
+
 ## 完整构建结果（2026-11-05）
 
 GitHub Actions run：`41962240610`
