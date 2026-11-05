@@ -20,6 +20,19 @@
 - `K6_LBJ_RX_v0.2-RF-integration-candidate.zip`：v0.2 RF 集成候选包。
 - `MANIFEST-SHA256.txt`：当前源码包文件校验清单。
 
+## 现有 LOSEHU 多固件 Bootloader 结构（已核对源码）
+
+项目：`https://github.com/losehu/uv-k5-bootloader-custom`
+- Release：`0.02`；当前仓库 `main` 的 `bl.json` 标记最新二级引导文件为 `L_BL002.bin`。
+- 仓库 README 说明要求 4Mib（512 KiB）EEPROM；每个被管理的固件镜像不能超过 60 KiB。
+- 固件数量字节位于 EEPROM `0x40000`；代码检查最大 64 个条目。
+- 固件目录从 `0x40020` 起，每个条目 32 bytes；名称和固件数据起止地址均由 Bootloader 读取。
+- 基础引导程序 `LOSEHU_BASE_BOOT` 位于 MCU Flash。它会从 EEPROM `0x41000` 读取 12 KiB 的 `L_BL002.bin` 到 RAM `0x20000800`，然后跳转执行。
+- 二级 `L_BL002` 显示 EEPROM 中的固件目录；选择后读取对应固件数据，并将所选镜像写入 MCU 应用 Flash 区，再复位运行。
+- 因此日常、救援和 LBJ 都是同一 Bootloader 管理的 EEPROM 固件条目；不是多个固件同时占据 MCU Flash 的独立运行槽。
+
+**对 LBJ 的含义：** 我们刚构建的 53,476-byte raw 镜像小于 60 KiB 限制。最终安装时应通过你正在使用的 Bootloader/K5WEB 既有流程新增一个 LBJ 固件条目和镜像数据，不能把“当前编译未写 EEPROM”误解成“安装 LBJ 不需要写 EEPROM”。现阶段没有修改设备上的 EEPROM、基础 Bootloader 或 `L_BL002`；这些变更只发生在实际添加固件条目时。
+
 ## 已确认的基线
 
 - UI 基准：rev3。常规统一字体；车次、方向、速度在第一行；公里标独占一行，显示 K201 形式；型和线放在下方；不显示 A/B 端位。
@@ -27,7 +40,7 @@
 - LBJ 接收频率：821.2375 MHz；LOSEHU 频率单位按 10 Hz，运行时值 82123750。
 - 当前候选 RF 路径：BK4819 直 FSK 1200 + FIFO → MCU POCSAG 软件解码。
 - 历史记录暂定 10 条，仅 RAM。
-- LBJ 固件必须是独立多系统槽位；不得覆盖日常 LOSEHU、救援固件或修改现有 Bootloader/EEPROM 槽位元数据。
+- LBJ 的目标是作为一个新固件条目加入你现有的 LOSEHU 多固件 Bootloader EEPROM 固件目录；保留已有日常固件、救援固件和 Bootloader 条目。这里的“独立”指独立固件镜像/目录项，不是同时存在于 MCU Flash 的多个执行槽。
 
 ## 用户补充上传的当前固件镜像
 
@@ -95,7 +108,7 @@ LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=
 - 本仓库不 vendoring 作者完整固件树；通过 docs/UPSTREAM_BASE.md 和 workflow 固定上游 tag/commit，工作流运行时自动 clone。
 - 尚未在实体 K6 上验证 BK4819 真实 FSK 前导码/同步捕获、FIFO 字节顺序、位序、反相极性、长窗口重捕获和中断队列压力。
 - 尚未实测 LCD、灵敏度、PTT/侧键/串口等硬件层面的绝对不发射。
-- 尚未测试多系统 bootloader 独立槽位加载和刷写。
+- 尚未用你当前的 K5WEB/Bootloader 流程把 LBJ 镜像作为新条目写入 EEPROM 固件目录，也尚未验证选择后从 EEPROM 搬运到 Flash 并启动。
 
 ## 下一步工作顺序
 
@@ -103,7 +116,7 @@ LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=
 2. 对 lbj_radio.c 做真实芯片 FSK 测试：前导码、sync 消耗、FIFO word/byte 顺序、MSB-first、正常/反相、2048-byte 窗口和重捕获。
 3. 测量 FIFO almost-full 到主循环消费的最坏延迟，压测 128-bit queue 溢出和丢包恢复。
 4. 验证 UI 实机显示、历史浏览、MENU/EXIT/UP/DOWN 按键。
-5. 只有以上通过后，才在单独备用多系统槽位测试；不得写日常槽位、救援槽位、Bootloader 或 EEPROM 元数据。
+5. RF、按键和 no-TX 检查通过后，按现有 Bootloader/K5WEB 支持的方式，把 LBJ BIN 作为一个新固件条目追加到 EEPROM 固件目录；保留原日常/救援镜像及现有 Bootloader 条目，不重刷基础 Bootloader 或 L_BL002。
 
 ## 关键风险提醒
 
