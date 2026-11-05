@@ -50,15 +50,15 @@ LBJ 固件是独立接收系统，不是把当前 132HS 所有功能原样保留
 
 ## 完整构建结果（2026-11-05）
 
-GitHub Actions run：`41962240610`
-- 源码提交：`e9e939fc472b64f8ca9a73b4492f3d85e9aa7fde`
-- Artifact：`K6-LBJ-RX-LOSEHU132K`（ID `13385797964`）
-- Artifact URL：`https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610/artifacts/13385797964`
-- raw firmware：53,908 bytes
-- packed LOSEHU132K.bin：53,926 bytes；额外 18 bytes 为版本字段和 CRC
-- CRC-16/XMODEM：`0x9DF8`，验证通过
-- FLASH：53,908 / 61,440 bytes（87.74%）
-- RAM：5,128 / 16,384 bytes（31.30%）
+GitHub Actions run：`41962799054`
+- 源码提交：`5f7f41d7b39ddec33922c1833481896bf4a5e38a`
+- Artifact：`K6-LBJ-RX-LOSEHU132K`（ID `13386116726`）
+- Artifact URL：`https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054/artifacts/13386116726`
+- raw firmware：53,476 bytes
+- packed LOSEHU132K.bin：53,494 bytes；额外 18 bytes 为版本字段和 CRC
+- CRC-16/XMODEM：`0xAEB0`，验证通过
+- FLASH：53,476 / 61,440 bytes（87.04%）
+- RAM：5,124 / 16,384 bytes（31.27%）
 - map / ELF / raw BIN / packed BIN / JSON 报告均在 artifact 中
 - 构建工具链：arm-none-eabi-gcc 10.3.1、binutils 2.38、newlib 3.3.0
 
