@@ -111,7 +111,7 @@ def main() -> int:
         "    gRequestSaveChannel = 1;\n\n"
         "    gTxVfo->DTMF_DECODING_ENABLE = !gTxVfo->DTMF_DECODING_ENABLE;\n"
         "    DTMF_clear_RX();\n#endif\n}",
-        "#ifdef ENABLE_DTMF_CALLING\\n    gRequestSaveChannel = 1;",
+        "#ifdef ENABLE_DTMF_CALLING\n    gRequestSaveChannel = 1;",
         "app/action.c",
     )
 
