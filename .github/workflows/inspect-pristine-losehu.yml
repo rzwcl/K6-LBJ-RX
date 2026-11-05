@@ -1,0 +1,61 @@
+name: Inspect pristine LOSEHU 132HS RAM layout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/k6-overlay-apps]
+    paths:
+      - "docs/K6_OVERLAY_APPS.md"
+      - "tools/k6_app_image.py"
+      - ".github/workflows/inspect-pristine-losehu.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-pristine:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout research project
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC and upstream build dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi python3-crcmod
+
+      - name: Fetch clean upstream LOSEHU 0.13.2
+        run: |
+          git clone --depth 1 --branch 0.13.2 https://github.com/losehu/uv-k5-firmware-custom.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = "021656ea13226d349e31acd6eb21079c5bab64c7"
+
+      - name: Build unmodified 132HS feature baseline
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          make build ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=0 ENABLE_4732=1
+          test -s firmware
+          {
+            echo "Purpose: RAM/layout inspection only; NOT a flash package."
+            echo "Upstream tag: 0.13.2"
+            echo "Upstream commit: $(git rev-parse HEAD)"
+            echo "Config: ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=0 ENABLE_4732=1"
+            echo
+            echo "=== ARM size ==="
+            arm-none-eabi-size firmware
+            echo
+            echo "=== Key linker symbols ==="
+            arm-none-eabi-nm -n firmware | grep -E '(_estack|_sdata|_edata|_sbss|_ebss|__bss_start__|__bss_end__|[[:space:]]end$|[[:space:]]_end$)' || true
+            echo
+            echo "=== ELF sections ==="
+            arm-none-eabi-objdump -h firmware
+          } | tee pristine-losehu-ram-report.txt
+          rm -f firmware.bin LOSEHU*.bin
+
+      - name: Upload memory report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: pristine-LOSEHU132HS-memory-report
+          if-no-files-found: error
+          path: upstream/pristine-losehu-ram-report.txt
