@@ -9,6 +9,10 @@
 
 **这版已经完成作者 LOSEHU 0.13.2 源码树上的完整 ARM GCC 编译和链接，生成了 `LOSEHU132K.bin`。** 当前仍是“待 K6 射频/按键实测的集成候选版”，不是已验证可刷写固件。构建占用 FLASH 53,476/61,440 bytes、RAM 5,124/16,384 bytes；CRC 校验通过。
 
+## 与现有多固件 Bootloader 的关系
+
+LBJ 是现有 LOSEHU 多固件目录中的一个新固件项，不另做一套引导器。该 Bootloader 使用 512 KiB EEPROM 保存二级引导和多个固件镜像，选择条目后把选中的镜像复制到 MCU Flash 执行；每个固件镜像最多 60 KiB。LBJ 本次 raw 镜像为 53,476 bytes。最终添加 LBJ 时会通过现有 Bootloader/K5WEB 流程向 EEPROM 固件目录追加镜像和目录记录，保留原有日常固件、救援固件及 Bootloader。
+
 ## 屏幕布局
 
 ![K6 LBJ LCD preview](docs/lcd_preview.png)
@@ -127,7 +131,7 @@ make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0 ENA
 
 `make build` 只构建，不写电台；不要用 `make all` 或 `make flash`。LBJ 模式关闭 UART 初始化和串口命令解析；仅把 driver/uart.o 链入以满足菜单对象中的 UART_Send 符号引用，不启动串口接收或 EEPROM 串口配置、VOX、DTMF 呼叫、自定义发送侧键、报警和 1750 Hz 发射，并在 `RADIO_PrepareTX`、`RADIO_PrepareCssTX`、`RADIO_SetTxParameters` 入口增加硬性 TX 返回保护。构建脚本会拒绝同时开启 Messenger、MDC1200 或 Aircopy，因为它们会争用 BK4819 FSK FIFO。`ENABLE_LBJ` 默认是 0，未指定时原固件编译路径保持关闭。
 
-`82123750` 是 LOSEHU 的 10 Hz 频率单位，对应 821.2375 MHz；安装代码将接收指针强制指回 RX 频率结构，只改 RAM，不保存频道或 EEPROM。最终 `firmware.bin` 大小必须低于现有多系统引导器单槽 60 KiB 限制，当前还没有实际链接结果，所以不能假定它能放入槽位。
+`82123750` 是 LOSEHU 的 10 Hz 频率单位，对应 821.2375 MHz；运行时只修改 RX 频率结构，不保存频道或 EEPROM。你现有的 [LOSEHU 多固件 Bootloader](https://github.com/losehu/uv-k5-bootloader-custom) 将固件镜像作为 EEPROM 固件目录条目管理，选择后再搬运到 MCU Flash 运行；单个镜像上限为 60 KiB。本次 LBJ raw `firmware.bin` 已链接为 53,476 bytes，满足文件尺寸限制。
 
 ## 编译状态与剩余验证（当前仍不要刷机）
 
@@ -137,9 +141,9 @@ make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0 ENA
 4. 最终 raw `firmware.bin` 为 53,908 bytes，packed `LOSEHU132K.bin` 为 53,926 bytes；FLASH 53,908/61,440 bytes，RAM 5,128/16,384 bytes；CRC-16/XMODEM `0x9DF8` 通过，距离 60 KiB 上限还剩 7,532 bytes。
 5. 没有 K6 实机 RF 测试、接收灵敏度测试、屏幕测试或多系统槽位安装测试。必须先验证 POCSAG 同步、位序、正常/反相、完整报文和 2048 字节窗口后的重新捕获。
 6. 频率写入值已按 LOSEHU 的 10 Hz 单位修正为 `82123750`（即 821.2375 MHz），并显式把 RX 指针设回 `freq_config_RX`；频率只改运行时 RAM，不保存到频道或 EEPROM。
-7. 没有修改引导器、EEPROM 槽位元数据、日常 LOSEHU 固件，也没有写入电台。LBJ 构建会关闭串口写 EEPROM 的入口，但设备原有固件/bootloader 的存储行为仍需另行保持不动。
+7. 本次只在 CI 中生成固件，没有对电台写入任何数据。最终部署时需要通过现有 Bootloader/K5WEB 流程，把 LBJ 镜像和一个新目录条目追加到 EEPROM；这属于正常的固件安装步骤，不需要重刷基础 Bootloader 或替换 `L_BL002`，也不应覆盖现有日常/救援条目。
 
-**当前包已通过完整 LOSEHU 编译、链接和 60 KiB 容量核验，但尚未通过 K6 实机 RF/no-TX/多系统槽位测试，因此仍不能直接刷入。** 下一步是先完成 TX 路径审计与硬件 no-TX 检查，再用信号源/已知录音验证 RF FIFO 和 POCSAG，最后才考虑独立备用槽位。
+**当前包已通过完整 LOSEHU 编译、链接和 60 KiB 容量核验，但尚未通过 K6 实机 RF/no-TX/Bootloader 装载测试。** 下一步是完成硬件接收和无发射验证，再按现有 Bootloader 的固件目录流程追加 LBJ 条目并测试选择启动。
 
 ## 参考源码
 
