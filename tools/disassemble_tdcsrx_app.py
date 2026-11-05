@@ -63,7 +63,7 @@ def disassemble(code: bytes, vma: int):
     engine.detail = True
     # FAP1 contains literal pools and constants inside the linked code range.
     # Skip invalid halfwords, rather than terminating at the first pool.
-    def skip_thumb_halfword(_code, _offset, _user_data):
+    def skip_thumb_halfword(_code, _size, _offset, _user_data):
         return 2
     engine.skipdata_setup = (".hword", skip_thumb_halfword, None)
     engine.skipdata = True
@@ -135,7 +135,18 @@ def main():
     disasm, calls = disassemble(code, int(metadata["link_vma"]))
     args.raw_disassembly.write_text(disasm, encoding="utf-8")
     args.output.write_text(render_report(metadata, disasm, calls), encoding="utf-8")
-    instruction_count = sum(1 for line in disasm.splitlines() if len(line) >= 4 and all(c in "0123456789abcdef" for c in line[:4]))
+    decoded_offsets = [
+        int(line[:4], 16) for line in disasm.splitlines()
+        if len(line) >= 4 and all(c in "0123456789abcdef" for c in line[:4])
+    ]
+    instruction_count = sum(1 for line in disasm.splitlines()
+                            if len(line) >= 4 and all(c in "0123456789abcdef" for c in line[:4])
+                            and " .hword " not in line)
+    if instruction_count < 400 or not decoded_offsets or max(decoded_offsets) < 0x0E00:
+        raise RuntimeError(
+            f"incomplete Thumb disassembly: {instruction_count} instruction rows, "
+            f"last offset 0x{max(decoded_offsets, default=0):04x}"
+        )
     print("TDCSRX FAP1 source validation: PASS")
     print(f"file size: {metadata['file_size']} bytes")
     print(f"Git blob SHA1: {actual_blob_sha}")
