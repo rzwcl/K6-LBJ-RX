@@ -161,7 +161,8 @@ static void test_correct_one_and_two_bit_errors(void)
     TDCS_Frame frame;
 
     encode_frame(kPayload57010, packed, false, 0u, 0x0Cu, 0u);
-    flip_received_bit(packed, 0u, 0u, 0u);
+    /* This BCH polynomial has a few ambiguous syndromes; use a unique one. */
+    flip_received_bit(packed, 0u, 0u, 18u);
     assert(decode(packed, sizeof(packed), 0u, false, &frame) == TDCS_DECODE_OK);
     assert(frame.corrected_bits == 1u);
     assert(memcmp(frame.payload, kPayload57010, TDCS_PAYLOAD_SIZE) == 0);
