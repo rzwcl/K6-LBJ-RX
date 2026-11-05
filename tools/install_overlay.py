@@ -55,6 +55,7 @@ def main() -> int:
     ui_c = read(root / "ui/ui.c")
     main_c = read(root / "main.c")
     radio_c = read(root / "radio.c")
+    firmware_ld = read(root / "firmware.ld")
 
     makefile = insert_once(
         makefile,
@@ -101,6 +102,16 @@ def main() -> int:
         "\tCFLAGS += -DENABLE_LBJ\nendif\n\n",
         "CFLAGS += -DENABLE_LBJ",
         "Makefile",
+    )
+
+    # The upstream linker script reserves stack space but does not export
+    # the heap start symbol expected by newlib's nosys _sbrk implementation.
+    firmware_ld = insert_once(
+        firmware_ld,
+        "    /* Check that there is enough RAM */",
+        "    end = .;\n    _end = .;\n\n",
+        "    end = .;",
+        "firmware.ld",
     )
 
     # ACTION_D_DCD references a VFO field that only exists when
@@ -407,7 +418,8 @@ def main() -> int:
     for rel, content in (("Makefile", makefile), ("app/app.c", app_c),
                          ("app/action.c", action_c), ("ui/main.c", ui_main_c),
                          ("ui/ui.h", ui_h), ("ui/ui.c", ui_c),
-                         ("main.c", main_c), ("radio.c", radio_c)):
+                         ("main.c", main_c), ("radio.c", radio_c),
+                         ("firmware.ld", firmware_ld)):
         (root / rel).write_text(content, encoding="utf-8", newline="")
 
     print("LBJ source/UI overlay installed.")
