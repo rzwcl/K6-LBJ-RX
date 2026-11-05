@@ -7,7 +7,6 @@ on:
     paths:
       - "FirmwareOverlay/**"
       - "tools/**"
-      - "docs/**"
       - ".github/workflows/build-lbj.yml"
 
 permissions:
