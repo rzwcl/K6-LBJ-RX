@@ -103,6 +103,24 @@ LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=
 
 完整验证数据见 docs/VERIFICATION.txt。
 
+## TDCSRX RX 0.3 逆向恢复记录（2026-11-06）
+
+已把公开的 `troilus/lbjradioweb/archive/apps/TDCSRX-cn.v5.5.6.app` 的一部分逆向重建资料提交到本仓库：
+
+- 研究目录：`research/tdcsrx_rx03/`
+- 包含 `tdcsrx_recovered_protocol.c/.h`、`test_tdcsrx_recovered.c`、`Makefile` 和 `TDCSRX_REVERSE_ENGINEERING.md`。
+- 来源 APP：FAP1，4,140 bytes，`TDCS RX 0.3`，F4HWN overlay API 3；这不是 K6 可直接运行的固件，也不是原作者完整 C 源码。
+- 从原版帧解析逻辑恢复的应用帧为 45 bytes：固定字节 `0x0C 0x2B`，头部偏移 7..9 有两种允许值，偏移 10 为 32-byte payload 长度，偏移 11..42 为 payload，偏移 43..44 为大端 CRC-16/XMODEM。
+- 负载字段映射以及 CRC 校验已写入 C 重建代码。合成帧覆盖两个帧头分支、全部字段、CRC/帧头/长度拒绝。
+
+**测试边界：** 本轮使用 GCC 严格告警编译、普通测试和 AddressSanitizer/UndefinedBehaviorSanitizer 测试均通过；测试向量是合成数据，不是用户录音，也不证明 RF 实收正确。
+
+**仍未完成：** 原版 BCH 字面值 `0xB905` 产生的 26 个单比特 syndrome 仅有 16 个唯一值；参考多项式 `0x05B9` 虽有 26 个唯一值，但尚未证实它就是目标实现。音频 DSP（代码偏移 `0x950`）、采样时序、26-bit 字码组帧、完整 UI/按键/设置仍需逆向。现有代码只是帧解析层，未接入 `FirmwareOverlay`，不能构建成 K6-TDCSRX 固件。
+
+**旧分支警告：** `k6-full-firmware` 分支留有早期实验版 TDCS 代码，其中 `TDCS_PAYLOAD_SIZE=40` 和对应帧布局与本次从原版 TDCSRX 0.3 解析器恢复出的 32-byte payload 不符；该分支代码不应直接合并或作为目标协议实现。26-bit 码字数量/音频接收路径同样仍需要原版 DSP 和组帧逻辑验证。
+
+后续顺序：先继续逆向原版 DSP/码字同步与组帧，解决 BCH 差异；然后再把确认后的接收链移植到 K6 DP32G030 + BK4819，最后才接入单独的 TDCSRX 完整固件构建。LBJ 固件现有构建产物和文件不受这次研究目录提交影响。
+
 ## 仍缺少的内容
 
 - 本仓库不 vendoring 作者完整固件树；通过 docs/UPSTREAM_BASE.md 和 workflow 固定上游 tag/commit，工作流运行时自动 clone。
