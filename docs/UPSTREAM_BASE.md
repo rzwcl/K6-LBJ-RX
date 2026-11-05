@@ -21,7 +21,7 @@
 - 作者 `fw-pack.py` 会在原始 firmware binary 中间插入 16 字节版本字段，并在尾部增加 2 字节 CRC，因此打包文件比原始 `firmware.bin` 多 18 bytes。61,458 - 18 = 61,440 bytes，恰好为 60 KiB。
 - 同标签 `firmware.ld` 的 FLASH 长度是 60 KiB。因此该镜像文件长度与 60 KiB 原始固件加 18 字节打包开销吻合。
 
-进一步对用户 BIN 做了真实解包校验：按作者 0.13.2 的 128-byte XOR 混淆表解码，恢复出头部向量表；0x2000 处的 16-byte 版本字段为 `*OEFW-LOSEHU`；尾部 CRC-16/XMODEM 计算值 `0xEE94` 与文件保存值一致。由此确认该文件采用作者 fw-pack.py 的打包格式且未发生传输损坏。由于版本字段写的是 AUTHOR_STRING（默认 LOSEHU），并不包含 HS 后缀，因此仍不能仅凭此字段证明源代码 tag 和机器码完全一致；文件名中“ M DC尾音”也可能代表额外定制。
+进一步对用户 BIN 做了真实解包校验：按作者 0.13.2 的 128-byte XOR 混淆表解码，恢复出头部向量表；0x2000 处的 16-byte 版本字段为 `*OEFW-LOSEHU`；尾部 CRC-16/XMODEM 计算值 `0xEE94` 与文件保存值一致。由此确认该文件采用作者 fw-pack.py 的打包格式且未发生传输损坏。由于版本字段写的是 AUTHOR_STRING（默认 LOSEHU），并不包含 HS 后缀，因此仍不能仅凭此字段证明源代码 tag 和机器码完全一致；文件名中的“MDC尾音”也可能代表额外定制。
 
 ## LBJ 专用镜像的构建配置方向
 
@@ -44,8 +44,22 @@ LBJ 固件是独立接收系统，不是把当前 132HS 所有功能原样保留
 
 安装脚本已调整为用正则匹配 main.c 的 VFO 初始化调用对，兼容该标签实际空行格式。仍须在真实 checkout 上执行 dry-run、安装、构建；锚点核对不能代替编译。
 
+## 完整构建结果（2026-11-05）
+
+GitHub Actions run：`41962240610`
+- 源码提交：`e9e939fc472b64f8ca9a73b4492f3d85e9aa7fde`
+- Artifact：`K6-LBJ-RX-LOSEHU132K`（ID `13385797964`）
+- Artifact URL：`https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610/artifacts/13385797964`
+- raw firmware：53,908 bytes
+- packed LOSEHU132K.bin：53,926 bytes；额外 18 bytes 为版本字段和 CRC
+- CRC-16/XMODEM：`0x9DF8`，验证通过
+- FLASH：53,908 / 61,440 bytes（87.74%）
+- RAM：5,128 / 16,384 bytes（31.30%）
+- map / ELF / raw BIN / packed BIN / JSON 报告均在 artifact 中
+- 构建工具链：arm-none-eabi-gcc 10.3.1、binutils 2.38、newlib 3.3.0
+
 ## 构建入口
 
-`.github/workflows/build-lbj.yml` 从固定标签 clone 上游源码，在临时工作目录应用 overlay，并构建 LBJ 专用固件。构建产物作为 GitHub Actions artifact 保存，不把生成 BIN 混入源码提交。
+`.github/workflows/build-lbj.yml` 从固定标签 clone 上游源码，在临时工作目录应用 overlay，先 dry-run，再安装并做二次 dry-run 幂等性检查，最后构建 LBJ 专用固件。构建产物作为 GitHub Actions artifact 保存，不把生成 BIN 混入源码提交。
 
-本工作流的首次成功结果才算完整 LOSEHU 工程构建；在此之前，已有的 host tests / overlay stub syntax / ARM object checks 不应称为整机编译。
+完整链接已经通过，但不等于 K6 实机验证。RF 捕获、FIFO 延迟/溢出、LCD、no-TX 和多系统备用槽位测试仍未执行。
