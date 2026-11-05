@@ -1,0 +1,19 @@
+name: TDCSRX recovered parser tests
+
+on:
+  push:
+    paths:
+      - "research/tdcsrx_rx03/**"
+      - ".github/workflows/test-tdcsrx-recovered.yml"
+  pull_request:
+    paths:
+      - "research/tdcsrx_rx03/**"
+      - ".github/workflows/test-tdcsrx-recovered.yml"
+
+jobs:
+  parser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run recovered parser tests
+        run: make -C research/tdcsrx_rx03 clean test
