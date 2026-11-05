@@ -1,0 +1,32 @@
+name: K6 TDCS protocol tests
+
+on:
+  push:
+    branches:
+      - k6-full-firmware
+    paths:
+      - "FirmwareOverlay/protocol/tdcs_protocol.c"
+      - "FirmwareOverlay/protocol/tdcs_protocol.h"
+      - "tests/test_tdcs_protocol.c"
+      - ".github/workflows/test-k6-tdcs-protocol.yml"
+  pull_request:
+    paths:
+      - "FirmwareOverlay/protocol/tdcs_protocol.c"
+      - "FirmwareOverlay/protocol/tdcs_protocol.h"
+      - "tests/test_tdcs_protocol.c"
+      - ".github/workflows/test-k6-tdcs-protocol.yml"
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile with strict warnings
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -IFirmwareOverlay/protocol \
+            FirmwareOverlay/protocol/tdcs_protocol.c \
+            tests/test_tdcs_protocol.c \
+            -o tdcs-protocol-tests
+      - name: Run decoder tests
+        run: ./tdcs-protocol-tests
