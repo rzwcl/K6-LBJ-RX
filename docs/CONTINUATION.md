@@ -31,14 +31,15 @@
 
 ## 用户补充上传的当前固件镜像
 
-仓库根目录新增：`LOSEHU132HS(MDC尾音).bin`
-- GitHub blob SHA：`92862b51dd340880f86dd5b4f6ffe99b5d336c6b`
+仓库根目录新增：LOSEHU132HS(MDC尾音).bin
+- GitHub blob SHA：92862b51dd340880f86dd5b4f6ffe99b5d336c6b
 - 文件大小：61,458 bytes。
-- 这是编译后的固件二进制镜像，不是 C 源码工程。
-- 可以用它作为当前固件的静态分析基准（字符串、版本线索、镜像布局、可识别模块等）；不能直接从中获得可维护的原始 Makefile/main.c/radio.c/app/driver/ui 源文件，也不能据此重新链接出带 LBJ 的固件。
-- 暂时只确认该文件已存在于仓库，尚未独立验证其内容是否与电台当前运行版本逐字节一致。
+- 这是打包固件，不是 C 源代码工程。
+- 已按作者 0.13.2 的 fw-pack.py 解包/解混淆并验证 CRC-16/XMODEM：0xEE94；raw firmware 长度 61,440 bytes，恰好 60 KiB。
+- 版本字段：*OEFW-LOSEHU；初始 MSP：0x20003FF0；复位向量：0x0000010B。
+- 这些信息证明打包格式和镜像完整性，但不能单凭它证明 BIN 与作者 tag 的机器码完全一致；“MDC尾音”可能表示定制差异。
 
-因此，“当前固件 BIN”已补充；“当前固件对应的完整源代码工程”仍未在仓库中发现。
+作者完整源码不复制进本仓库；通过固定 tag + commit 的 GitHub Actions 工作流自动拉取。这样可复现，也不会把上游滚动 main 混入。
 
 ## 作者 LOSEHU 源码已定位
 
@@ -56,13 +57,25 @@
 
 LBJ 专用镜像首轮构建配置：保留 `ENABLE_CHINESE_FULL=4`，关闭拼音、SI4732、MDC1200、Messenger、Aircopy、Spectrum、Doppler 和 FM Radio。它是独立接收系统，不要求保留当前 132HS 的所有附加功能。构建失败或超出 flash 时，根据链接 map 进一步裁剪；不能直接刷写。
 
-## 当前待执行验证
+## 当前完整构建状态
 
-1. GitHub Actions 首轮完整构建结果（检查 workflow 是否触发、dry-run/overlay/build 是否通过）。
-2. 如果构建失败，按第一处错误修复 installer 或 overlay，不能把失败包装成已完成。
-3. 审计除三个 radio.c 入口外所有 TX 路径，确保 LBJ 固件真正只接收。
-4. 用完整编译 map 核查 FLASH/RAM、60 KiB 空间和 LBJ 新增内存占用。
-5. RF FIFO 压力/中断频率/前导码重捕获仍需实测。
+完整编译和链接：PASS
+
+- 工作流：Build K6 LBJ RX
+- 成功 run：41962240610
+- 源码提交：e9e939fc472b64f8ca9a73b4492f3d85e9aa7fde
+- Artifact：K6-LBJ-RX-LOSEHU132K
+- Artifact ID：13385797964
+- 下载页：https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610/artifacts/13385797964
+- packed BIN：LOSEHU132K.bin，53,926 bytes；raw firmware.bin 53,908 bytes。
+- CRC-16/XMODEM 0x9DF8 通过。
+- FLASH：53,908 / 61,440 bytes（87.74%）；RAM：5,128 / 16,384 bytes（31.30%）。
+- linker map firmware.map 已包含在 artifact。
+- 作者 0.13.2 真实源码树 dry-run、overlay 安装、二次 dry-run 幂等性检查均通过。
+
+构建配置保留完整中文字体（ENABLE_CHINESE_FULL=4），关闭拼音、SI4732、Messenger、MDC1200、Aircopy、Spectrum、Doppler、FM Radio、DTMF calling 和 UART 命令处理。输出后缀 K 表示完整中文、无拼音输入、无 SI4732；这是 LBJ 独立系统，不是当前 132HS 的功能复刻。
+
+编译器报告和打包报告见 docs/VERIFICATION.txt。完整 map、ELF、raw BIN、packed BIN 和 JSON 报告均在 Actions artifact 中。
 
 ## 已有验证（不要扩大解释）
 
@@ -76,25 +89,18 @@ LBJ 专用镜像首轮构建配置：保留 `ENABLE_CHINESE_FULL=4`，关闭拼�
 
 ## 仍缺少的内容
 
-仓库当前没有完整的 `losehu/uv-k5-firmware-custom` 基础源码树，特别是实际版本的：
-- Makefile、linker script（例如 firmware.ld）
-- main.c、radio.c
-- app/app.c
-- ui/ui.h、ui/ui.c
-- driver、bsp、hardware、external 等完整目录
-- 该版本配套的打包脚本和工具链配置
-
-因此目前没有可信的完整 LOSEHU 工程链接结果、最终 firmware.bin，也没有实际 BIN 大小与 60 KiB 单槽限制核验结果。
+- 本仓库不 vendoring 作者完整固件树；通过 docs/UPSTREAM_BASE.md 和 workflow 固定上游 tag/commit，工作流运行时自动 clone。
+- 尚未在实体 K6 上验证 BK4819 真实 FSK 前导码/同步捕获、FIFO 字节顺序、位序、反相极性、长窗口重捕获和中断队列压力。
+- 尚未实测 LCD、灵敏度、PTT/侧键/串口等硬件层面的绝对不发射。
+- 尚未测试多系统 bootloader 独立槽位加载和刷写。
 
 ## 下一步工作顺序
 
-1. 获取用户实际使用版本的完整 LOSEHU 源码，放在独立工作副本；不要修改日常固件工作目录。
-2. 记录基础仓库 URL、分支/commit SHA、工具链版本。
-3. 先审查安装脚本与真实源码的锚点、函数签名、BK4819 寄存器定义及中断处理流程；dry-run 成功后再安装到独立副本。
-4. 用完整工程工具链构建 `ENABLE_LBJ=1`，关闭 Messenger/MDC1200/Aircopy 等会争用 FSK FIFO 的功能。
-5. 检查链接 map、各段大小、最终 firmware.bin 大小；必须实测不超过既有多系统引导器的 60 KiB 单槽限制。
-6. RF 上台前先用已知 POCSAG IQ/音频或信号源验证前导码、首次同步、同步字是否被硬件消费、FIFO 字节顺序、位序、正常/反相极性、报文长度和接收窗口结束后的重捕获。
-7. 只有在 RF 验证和整机尺寸检查完成后，才考虑独立备用槽位测试。不得写日常槽位、救援槽位或 EEPROM 元数据。
+1. 审计真实固件的所有 TX 入口和 PTT/侧键路径；虽然主要 TX 入口和 PTT 事件已加保护，仍需完成静态调用链审计及硬件 no-TX 验证。
+2. 对 lbj_radio.c 做真实芯片 FSK 测试：前导码、sync 消耗、FIFO word/byte 顺序、MSB-first、正常/反相、2048-byte 窗口和重捕获。
+3. 测量 FIFO almost-full 到主循环消费的最坏延迟，压测 128-bit queue 溢出和丢包恢复。
+4. 验证 UI 实机显示、历史浏览、MENU/EXIT/UP/DOWN 按键。
+5. 只有以上通过后，才在单独备用多系统槽位测试；不得写日常槽位、救援槽位、Bootloader 或 EEPROM 元数据。
 
 ## 关键风险提醒
 
