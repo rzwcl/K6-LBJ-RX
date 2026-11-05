@@ -8,6 +8,9 @@
 typedef bool (*K6_AppEEPROMRead)(uint32_t address,
                                  void *destination,
                                  uint8_t length);
+typedef bool (*K6_AppEEPROMWrite)(uint32_t address,
+                                  const void *source,
+                                  uint8_t length);
 
 typedef struct {
     K6_AppEEPROMRead eeprom_read;
@@ -41,6 +44,24 @@ bool K6APP_BuildAPI(const K6_AppHostServices *host,
                     const K6_AppSlotInfo *slot,
                     K6_AppAPI *api);
 void K6APP_ClearAPI(void);
+
+/*
+ * Install a complete .k6app package into an erased slot.
+ * Writes are split at 128-byte EEPROM page boundaries. The slot header is
+ * first written uncommitted and the committed header is written last.
+ * This is host-tested only; the hardware adapter must wait for EEPROM writes
+ * to finish and report NACK/errors correctly.
+ */
+bool K6APP_Install(K6_AppEEPROMRead read_eeprom,
+                   K6_AppEEPROMWrite write_eeprom,
+                   uint8_t slot_index,
+                   const void *package,
+                   uint32_t package_size);
+
+/* Read and verify the code/asset CRCs stored in a slot. */
+bool K6APP_VerifySlot(K6_AppEEPROMRead read_eeprom,
+                      uint8_t slot_index,
+                      K6_AppSlotInfo *info);
 
 /* Header/range check only; code and asset CRCs are checked during Load(). */
 bool K6APP_ReadSlotInfo(K6_AppEEPROMRead read_eeprom,
