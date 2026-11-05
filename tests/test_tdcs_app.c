@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Main-loop integration tests use real 450-TAx2 payload samples. */
 #define TEST_PACKET_BYTES TDCS_RADIO_PACKET_BYTES
 #define TEST_FRAME_BITS (23u * 26u)
 
@@ -16,21 +15,39 @@ typedef struct {
 
 static MockRadio gMock;
 
-static const uint8_t kPayload57010[TDCS_PAYLOAD_SIZE] = {
-    0x3F, 0x1F, 0x00, 0x00, 0x1F, 0x8C, 0x30, 0x20,
-    0x03, 0x03, 0x04, 0x20, 0x20, 0x20, 0x20, 0xB2,
-    0xDE, 0x00, 0xED, 0x00, 0x63, 0x02, 0x28, 0x3B,
-    0x03, 0x1A, 0xC0, 0x00, 0xAE, 0x03, 0x15, 0x01,
-    0x12, 0x1D, 0x00, 0x0E, 0x0E, 0xA8, 0xD2, 0x4F
-};
+static void put_le16(uint8_t *p, uint16_t value)
+{
+    p[0] = (uint8_t)value;
+    p[1] = (uint8_t)(value >> 8);
+}
 
-static const uint8_t kPayload20873[TDCS_PAYLOAD_SIZE] = {
-    0x3F, 0x1F, 0x00, 0x00, 0x1F, 0x8C, 0x30, 0x20,
-    0x00, 0x00, 0x04, 0x20, 0x20, 0x20, 0x20, 0x89,
-    0x51, 0x00, 0xED, 0x00, 0x90, 0x1B, 0x66, 0x37,
-    0x43, 0x11, 0xC0, 0x00, 0xFF, 0x0F, 0x6A, 0x02,
-    0x2E, 0x19, 0x01, 0x0E, 0x0E, 0xE3, 0xD1, 0x4F
-};
+static void put_le24(uint8_t *p, uint32_t value)
+{
+    p[0] = (uint8_t)value;
+    p[1] = (uint8_t)(value >> 8);
+    p[2] = (uint8_t)(value >> 16);
+}
+
+static void make_payload(uint8_t payload[TDCS_DATA_SIZE], uint32_t train_number)
+{
+    memset(payload, 0, TDCS_DATA_SIZE);
+    payload[0] = 3u;
+    payload[1] = 3u;
+    payload[2] = 1u;
+    memcpy(payload + 3, "T   ", 4u);
+    put_le24(payload + 7, train_number);
+    put_le16(payload + 10, 242u);
+    put_le16(payload + 12, 521u);
+    put_le24(payload + 14, 1161011u);
+    put_le24(payload + 17, 124u);
+    put_le16(payload + 20, 800u);
+    put_le16(payload + 22, 410u);
+    payload[24] = 18u;
+    put_le16(payload + 25, 130u);
+    payload[27] = 4u;
+    payload[28] = 5u;
+    put_le24(payload + 29, 123456u);
+}
 
 static uint16_t test_remainder(uint32_t value)
 {
@@ -62,7 +79,7 @@ static void set_packed_bit(
 }
 
 static void encode_packet(
-    const uint8_t payload[TDCS_PAYLOAD_SIZE],
+    const uint8_t payload[TDCS_DATA_SIZE],
     uint8_t packet[TEST_PACKET_BYTES],
     bool lsb_first)
 {
@@ -73,12 +90,22 @@ static void encode_packet(
     memset(info, 0, sizeof(info));
     info[0] = 0x0Cu;
     info[1] = 0x2Bu;
-    memcpy(&info[3], payload, TDCS_PAYLOAD_SIZE);
+    info[2] = 0x00u;
+    info[3] = 0x3Fu;
+    info[4] = 0x1Fu;
+    info[5] = 0x00u;
+    info[6] = 0x00u;
+    info[7] = 0x1Fu;
+    info[8] = 0x8Cu;
+    info[9] = 0x30u;
+    info[10] = 0x20u;
+    memcpy(&info[11], payload, TDCS_DATA_SIZE);
     {
         const uint16_t crc = TDCS_CRC16XModem(info, 43u);
         info[43] = (uint8_t)(crc >> 8);
         info[44] = (uint8_t)crc;
     }
+    info[45] = 0xA5u; /* outside the 45-byte application frame */
 
     for (word_index = 0u; word_index < 23u; ++word_index) {
         const uint16_t data =
@@ -152,14 +179,16 @@ static bool init_app(void)
     return TDCS_AppInit(&ops);
 }
 
-static void test_process_real_57010_frame(void)
+static void test_process_synthetic_tdcs_frame(void)
 {
+    uint8_t payload[TDCS_DATA_SIZE];
     uint8_t packet[TEST_PACKET_BYTES];
     const TDCS_TrainRecord *record;
     TDCS_AppStats stats;
 
     assert(init_app());
-    encode_packet(kPayload57010, packet, false);
+    make_payload(payload, 112u);
+    encode_packet(payload, packet, false);
     feed_packet(packet, false);
     TDCS_AppProcess(1000u);
 
@@ -169,14 +198,19 @@ static void test_process_real_57010_frame(void)
     assert(record != NULL);
     assert(record->valid == 1u);
     assert(record->received_ms == 1000u);
-    assert(record->fields.train_number == 57010u);
-    assert(record->fields.loco_model == 237u);
-    assert(record->fields.loco_number == 611u);
-    assert(record->fields.mileage_m == 211752u);
-    assert(record->fields.speed_kmh == 26u);
+    assert(record->fields.train_number == 112u);
+    assert(record->fields.loco_model == 242u);
+    assert(record->fields.loco_number == 521u);
+    assert(record->fields.mileage_m == 1161011u);
+    assert(record->fields.speed_kmh == 124u);
+    assert(record->fields.weight_t == 800u);
+    assert(record->fields.length_tenths == 410u);
+    assert(record->fields.station_code == 130u);
+    assert(record->fields.driver_number == 123456u);
     assert(record->corrected_bits == 0u);
     assert(record->inverted == 0u);
     assert(record->bit_order_lsb == 0u);
+    assert(memcmp(record->payload, payload, TDCS_DATA_SIZE) == 0);
 
     TDCS_AppGetStats(&stats);
     assert(stats.accepted_frames == 1u);
@@ -186,12 +220,14 @@ static void test_process_real_57010_frame(void)
 
 static void test_repeat_updates_existing_record(void)
 {
+    uint8_t payload[TDCS_DATA_SIZE];
     uint8_t packet[TEST_PACKET_BYTES];
     const TDCS_TrainRecord *record;
     TDCS_AppStats stats;
 
     assert(init_app());
-    encode_packet(kPayload57010, packet, false);
+    make_payload(payload, 112u);
+    encode_packet(payload, packet, false);
     feed_packet(packet, false);
     TDCS_AppProcess(1000u);
 
@@ -209,13 +245,17 @@ static void test_repeat_updates_existing_record(void)
 
 static void test_history_order_and_selection(void)
 {
+    uint8_t payload_a[TDCS_DATA_SIZE];
+    uint8_t payload_b[TDCS_DATA_SIZE];
     uint8_t packet_a[TEST_PACKET_BYTES];
     uint8_t packet_b[TEST_PACKET_BYTES];
     const TDCS_TrainRecord *record;
 
     assert(init_app());
-    encode_packet(kPayload57010, packet_a, false);
-    encode_packet(kPayload20873, packet_b, true);
+    make_payload(payload_a, 112u);
+    make_payload(payload_b, 113u);
+    encode_packet(payload_a, packet_a, false);
+    encode_packet(payload_b, packet_b, true);
 
     feed_packet(packet_a, false);
     TDCS_AppProcess(1000u);
@@ -225,18 +265,18 @@ static void test_history_order_and_selection(void)
     assert(TDCS_AppGetHistoryCount() == 2u);
     record = TDCS_AppGetRecord(0u);
     assert(record != NULL);
-    assert(record->fields.train_number == 20873u);
+    assert(record->fields.train_number == 113u);
     assert(record->inverted == 1u);
     assert(record->bit_order_lsb == 1u);
 
     record = TDCS_AppGetRecord(1u);
     assert(record != NULL);
-    assert(record->fields.train_number == 57010u);
+    assert(record->fields.train_number == 112u);
 
     TDCS_AppMoveSelection(1);
-    assert(TDCS_AppGetSelected()->fields.train_number == 57010u);
+    assert(TDCS_AppGetSelected()->fields.train_number == 112u);
     TDCS_AppMoveSelection(-1);
-    assert(TDCS_AppGetSelected()->fields.train_number == 20873u);
+    assert(TDCS_AppGetSelected()->fields.train_number == 113u);
 
     TDCS_AppToggleDetail();
     assert(TDCS_AppGetDetailPage() == 1u);
@@ -244,11 +284,13 @@ static void test_history_order_and_selection(void)
 
 static void test_reject_corrupted_frame(void)
 {
+    uint8_t payload[TDCS_DATA_SIZE];
     uint8_t packet[TEST_PACKET_BYTES];
     TDCS_AppStats stats;
 
     assert(init_app());
-    encode_packet(kPayload57010, packet, false);
+    make_payload(payload, 112u);
+    encode_packet(payload, packet, false);
     packet[0] ^= 0x07u;
 
     feed_packet(packet, false);
@@ -266,7 +308,7 @@ int main(void)
         const char *name;
         void (*run)(void);
     } tests[] = {
-        {"process_real_57010_frame", test_process_real_57010_frame},
+        {"process_synthetic_tdcs_frame", test_process_synthetic_tdcs_frame},
         {"repeat_updates_existing_record", test_repeat_updates_existing_record},
         {"history_order_and_selection", test_history_order_and_selection},
         {"reject_corrupted_frame", test_reject_corrupted_frame}

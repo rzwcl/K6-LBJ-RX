@@ -15,7 +15,7 @@ typedef struct {
     uint8_t inverted;
     uint8_t bit_order_lsb;
     uint32_t received_ms;
-    uint8_t payload[TDCS_PAYLOAD_SIZE];
+    uint8_t payload[TDCS_DATA_SIZE];
     TDCS_PayloadFields fields;
 } TDCS_TrainRecord;
 
@@ -24,7 +24,6 @@ typedef struct {
     uint32_t rejected_frames;
     uint32_t rejected_bch;
     uint32_t rejected_header;
-    uint32_t rejected_padding;
     uint32_t rejected_crc;
     TDCS_RadioStats radio;
 } TDCS_AppStats;

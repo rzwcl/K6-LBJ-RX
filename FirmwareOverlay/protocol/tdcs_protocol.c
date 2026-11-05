@@ -5,7 +5,12 @@
 #define TDCS_BCH_GENERATOR 0x05B9u
 #define TDCS_BCH_DATA_SHIFT 10u
 #define TDCS_CRC_INPUT_SIZE 43u
-#define TDCS_SPECIAL_MILEAGE 9999999u
+#define TDCS_EXPECTED_FRAME_LENGTH 0x2Bu
+#define TDCS_EXPECTED_PAYLOAD_LENGTH 0x20u
+#define TDCS_MILEAGE_TEST_1 9999888u
+#define TDCS_MILEAGE_TEST_2 8888888u
+#define TDCS_MILEAGE_UNAVAILABLE 9999999u
+#define TDCS_MILEAGE_UNKNOWN 0x00FFFFFFu
 
 static uint16_t tdcs_bch_remainder(uint32_t value)
 {
@@ -34,8 +39,8 @@ static unsigned int tdcs_popcount26(uint32_t value)
 }
 
 /*
- * Find the unique one- or two-bit error pattern for a BCH syndrome.
- * Ambiguous syndromes are rejected instead of choosing an arbitrary pattern.
+ * Find a unique one- or two-bit error pattern for a BCH syndrome.
+ * If the syndrome is ambiguous, reject it instead of guessing.
  */
 static bool tdcs_find_error_mask(uint16_t syndrome, uint32_t *error_mask)
 {
@@ -87,6 +92,18 @@ static uint8_t tdcs_get_packed_bit(
     return (uint8_t)((data[bit_position >> 3] >> shift) & 1u);
 }
 
+static uint32_t tdcs_read_le24(const uint8_t *p)
+{
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16);
+}
+
+static uint16_t tdcs_read_le16(const uint8_t *p)
+{
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+
 uint16_t TDCS_CRC16XModem(const uint8_t *data, size_t length)
 {
     uint16_t crc = 0u;
@@ -120,10 +137,11 @@ TDCS_DecodeResult TDCS_DecodePackedFrame(
     TDCS_Frame *result)
 {
     uint8_t info[TDCS_INFO_SIZE];
-    size_t needed_bits;
     size_t available_bits;
     size_t codeword_index;
     unsigned int corrected_total = 0u;
+    bool header_variant_ff;
+    bool header_variant_1f;
 
     if (packed_bits == NULL || result == NULL) {
         return TDCS_DECODE_BAD_ARGUMENT;
@@ -134,12 +152,8 @@ TDCS_DecodeResult TDCS_DecodePackedFrame(
     }
 
     available_bits = packed_size * 8u;
-    if (bit_offset > available_bits) {
-        return TDCS_DECODE_INSUFFICIENT_BITS;
-    }
-
-    needed_bits = (size_t)TDCS_FRAME_CODED_BITS;
-    if (available_bits - bit_offset < needed_bits) {
+    if (bit_offset > available_bits ||
+        available_bits - bit_offset < (size_t)TDCS_FRAME_CODED_BITS) {
         return TDCS_DECODE_INSUFFICIENT_BITS;
     }
 
@@ -180,12 +194,23 @@ TDCS_DecodeResult TDCS_DecodePackedFrame(
         info[codeword_index * 2u + 1u] = (uint8_t)data_word;
     }
 
-    if (info[0] != 0x0Cu || info[1] != 0x2Bu || info[2] != 0x00u) {
-        return TDCS_DECODE_BAD_HEADER;
-    }
+    /*
+     * The executable's 45-byte parser checks the frame length, message type,
+     * two permitted address/control triplets, and the 32-byte data length.
+     * info[45] is the extra byte yielded by the 23rd BCH word, not part of
+     * the application frame; do not validate it or include it in the CRC.
+     */
+    header_variant_ff =
+        info[7] == 0xFFu && info[8] == 0xFFu && info[9] == 0xFFu;
+    header_variant_1f =
+        info[7] == 0x1Fu && info[8] == 0x8Cu && info[9] == 0x30u;
 
-    if (info[45] != 0u) {
-        return TDCS_DECODE_BAD_PADDING;
+    if (info[0] != 0x0Cu ||
+        info[1] != TDCS_EXPECTED_FRAME_LENGTH ||
+        info[2] != 0x00u ||
+        (!header_variant_ff && !header_variant_1f) ||
+        info[10] != TDCS_EXPECTED_PAYLOAD_LENGTH) {
+        return TDCS_DECODE_BAD_HEADER;
     }
 
     {
@@ -198,7 +223,7 @@ TDCS_DecodeResult TDCS_DecodePackedFrame(
             return TDCS_DECODE_BAD_CRC;
         }
 
-        memcpy(result->payload, &info[3], TDCS_PAYLOAD_SIZE);
+        memcpy(result->frame_body, &info[3], TDCS_FRAME_BODY_SIZE);
         result->crc16 = expected_crc;
         result->corrected_bits = (uint8_t)corrected_total;
     }
@@ -207,7 +232,7 @@ TDCS_DecodeResult TDCS_DecodePackedFrame(
 }
 
 bool TDCS_ParsePayload(
-    const uint8_t payload[TDCS_PAYLOAD_SIZE],
+    const uint8_t payload[TDCS_DATA_SIZE],
     TDCS_PayloadFields *fields)
 {
     uint32_t mileage;
@@ -220,63 +245,47 @@ bool TDCS_ParsePayload(
 
     memset(fields, 0, sizeof(*fields));
 
-    fields->event_code = (uint8_t)(payload[0x08] & 0x0Fu);
-    fields->signal_type_code = (uint8_t)(payload[0x09] & 0x07u);
-    fields->class_flags = payload[0x0A];
+    fields->event_code = (uint8_t)(payload[0x00] & 0x0Fu);
+    fields->signal_type_code = (uint8_t)(payload[0x01] & 0x07u);
+    fields->class_flags = payload[0x02];
 
-    memcpy(fields->train_type_id, &payload[0x0B], sizeof(fields->train_type_id));
-    if (payload[0x0E] >= 0x20u && payload[0x0E] <= 0x7Eu) {
-        fields->train_prefix = (char)payload[0x0E];
+    memcpy(fields->train_type_id, &payload[0x03], sizeof(fields->train_type_id));
+    if (payload[0x06] >= 0x20u && payload[0x06] <= 0x7Eu) {
+        fields->train_prefix = (char)payload[0x06];
     } else {
         fields->train_prefix = '\0';
     }
 
-    fields->train_number =
-        (uint32_t)payload[0x0F] |
-        ((uint32_t)payload[0x10] << 8) |
-        ((uint32_t)payload[0x11] << 16);
+    fields->train_number = tdcs_read_le24(&payload[0x07]);
+    fields->loco_model = payload[0x0A];
+    fields->loco_model_ext = payload[0x0B];
+    fields->loco_number = tdcs_read_le16(&payload[0x0C]);
 
-    fields->loco_model = payload[0x12];
-    fields->loco_model_ext = payload[0x13];
-    fields->loco_number =
-        (uint16_t)((uint16_t)payload[0x14] |
-                   ((uint16_t)payload[0x15] << 8));
-
-    mileage =
-        (uint32_t)payload[0x16] |
-        ((uint32_t)payload[0x17] << 8) |
-        ((uint32_t)payload[0x18] << 16);
+    mileage = tdcs_read_le24(&payload[0x0E]);
     fields->mileage_raw = mileage;
     fields->mileage_negative = (uint8_t)((mileage >> 23) & 1u);
     fields->mileage_increasing = (uint8_t)((mileage >> 22) & 1u);
     fields->mileage_m = mileage & 0x003FFFFFu;
-    fields->mileage_valid = mileage != TDCS_SPECIAL_MILEAGE;
+    fields->mileage_test_frame =
+        (uint8_t)(mileage == TDCS_MILEAGE_TEST_1 ||
+                  mileage == TDCS_MILEAGE_TEST_2);
+    fields->mileage_valid =
+        !fields->mileage_test_frame &&
+        mileage != TDCS_MILEAGE_UNAVAILABLE &&
+        mileage != TDCS_MILEAGE_UNKNOWN;
 
-    speed =
-        (uint32_t)payload[0x19] |
-        ((uint32_t)payload[0x1A] << 8) |
-        ((uint32_t)payload[0x1B] << 16);
+    speed = tdcs_read_le24(&payload[0x11]);
     fields->speed_raw = speed;
     fields->speed_kmh = (uint16_t)(speed & 0x03FFu);
 
-    fields->weight_t =
-        (uint16_t)((uint16_t)payload[0x1C] |
-                   ((uint16_t)payload[0x1D] << 8));
-    fields->length_tenths =
-        (uint16_t)((uint16_t)payload[0x1E] |
-                   ((uint16_t)payload[0x1F] << 8));
-    fields->car_count = payload[0x20];
+    fields->weight_t = tdcs_read_le16(&payload[0x14]);
+    fields->length_tenths = tdcs_read_le16(&payload[0x16]);
+    fields->car_count = payload[0x18];
+    fields->station_code = tdcs_read_le16(&payload[0x19]);
+    fields->route_number = payload[0x1B];
+    fields->actual_route_number = payload[0x1C];
 
-    fields->station_code =
-        (uint16_t)((uint16_t)payload[0x21] |
-                   ((uint16_t)payload[0x22] << 8));
-    fields->route_number = payload[0x23];
-    fields->actual_route_number = payload[0x24];
-
-    driver =
-        (uint32_t)payload[0x25] |
-        ((uint32_t)payload[0x26] << 8) |
-        ((uint32_t)payload[0x27] << 16);
+    driver = tdcs_read_le24(&payload[0x1D]);
     fields->driver_number = driver;
 
     return true;

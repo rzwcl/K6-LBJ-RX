@@ -74,7 +74,7 @@ static void add_record(
     gHistory[0].inverted = inverted ? 1u : 0u;
     gHistory[0].bit_order_lsb = bit_order_lsb ? 1u : 0u;
     gHistory[0].received_ms = now_ms;
-    memcpy(gHistory[0].payload, frame->payload, TDCS_PAYLOAD_SIZE);
+    memcpy(gHistory[0].payload, frame->frame_body + 8u, TDCS_DATA_SIZE);
     gHistory[0].fields = *fields;
 
     gSelectedIndex = 0u;
@@ -118,11 +118,10 @@ void TDCS_AppProcess(uint32_t now_ms)
             } else {
                 TDCS_DecodeResult reason = msb_result;
 
-                /* Prefer a frame-integrity failure over an earlier bit-order
-                   BCH failure when recording a rejected packet. */
+                /* Prefer a frame-integrity failure over a BCH failure from
+                   the other bit order when recording a rejected packet. */
                 if (lsb_result == TDCS_DECODE_BAD_CRC ||
-                    lsb_result == TDCS_DECODE_BAD_HEADER ||
-                    lsb_result == TDCS_DECODE_BAD_PADDING) {
+                    lsb_result == TDCS_DECODE_BAD_HEADER) {
                     reason = lsb_result;
                 }
 
@@ -131,8 +130,6 @@ void TDCS_AppProcess(uint32_t now_ms)
                     ++gStats.rejected_bch;
                 } else if (reason == TDCS_DECODE_BAD_HEADER) {
                     ++gStats.rejected_header;
-                } else if (reason == TDCS_DECODE_BAD_PADDING) {
-                    ++gStats.rejected_padding;
                 } else if (reason == TDCS_DECODE_BAD_CRC) {
                     ++gStats.rejected_crc;
                 }
@@ -143,7 +140,7 @@ void TDCS_AppProcess(uint32_t now_ms)
             continue;
         }
 
-        if (!TDCS_ParsePayload(frame.payload, &fields)) {
+        if (!TDCS_ParsePayload(frame.frame_body + 8u, &fields)) {
             ++gStats.rejected_frames;
             continue;
         }
