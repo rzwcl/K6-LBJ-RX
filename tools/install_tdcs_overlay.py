@@ -285,7 +285,7 @@ def main() -> int:
         '#include "app/tdcs_k6_adapter.h"',
         "radio.c",
     )
-    radio_c = insert_once(
+    radio_c = replace_once(
         radio_c,
         "    if (switchToForeground)\n        FUNCTION_Select(FUNCTION_FOREGROUND);\n}",
         "    if (switchToForeground)\n        FUNCTION_Select(FUNCTION_FOREGROUND);\n"
