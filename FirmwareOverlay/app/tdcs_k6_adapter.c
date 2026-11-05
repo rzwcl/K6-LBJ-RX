@@ -6,6 +6,7 @@
 
 static uint16_t gLastTick;
 static uint32_t gElapsedMs;
+static uint8_t gStarted;
 
 static uint16_t read_register(uint8_t reg)
 {
@@ -32,7 +33,14 @@ void TDCS_K6_Start(void)
 
     gLastTick = gFlashLightBlinkCounter;
     gElapsedMs = 0u;
-    (void)TDCS_AppInit(&ops);
+    gStarted = (uint8_t)TDCS_AppInit(&ops);
+}
+
+void TDCS_K6_Reapply(void)
+{
+    if (gStarted != 0u) {
+        (void)TDCS_RadioReconfigure();
+    }
 }
 
 void TDCS_K6_HandleInterrupts(uint16_t interrupt_bits)
