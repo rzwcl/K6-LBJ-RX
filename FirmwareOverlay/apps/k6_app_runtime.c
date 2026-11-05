@@ -228,6 +228,226 @@ bool K6APP_ReadAsset(K6_AppEEPROMRead read_eeprom,
     return true;
 }
 
+#define K6_APP_EEPROM_PAGE_SIZE 128u
+#define K6_APP_VERIFY_CHUNK 64u
+
+static bool K6APP_WritePageSafe(K6_AppEEPROMWrite write_eeprom,
+                                uint32_t address,
+                                const uint8_t *source,
+                                uint32_t length)
+{
+    while (length != 0u) {
+        const uint32_t page_room =
+            K6_APP_EEPROM_PAGE_SIZE -
+            (address & (K6_APP_EEPROM_PAGE_SIZE - 1u));
+        uint32_t chunk = (length < page_room) ? length : page_room;
+
+        if (chunk > K6_APP_EEPROM_PAGE_SIZE)
+            chunk = K6_APP_EEPROM_PAGE_SIZE;
+
+        if (!write_eeprom(address, source, (uint8_t)chunk))
+            return false;
+
+        address += chunk;
+        source += chunk;
+        length -= chunk;
+    }
+
+    return true;
+}
+
+static bool K6APP_CRC32EEPROMRange(K6_AppEEPROMRead read_eeprom,
+                                   uint32_t address,
+                                   uint32_t length,
+                                   uint32_t *result)
+{
+    uint8_t buffer[K6_APP_VERIFY_CHUNK];
+    uint32_t crc = 0xFFFFFFFFu;
+
+    if (read_eeprom == NULL || result == NULL)
+        return false;
+
+    while (length != 0u) {
+        const uint8_t chunk =
+            (length > sizeof(buffer)) ? (uint8_t)sizeof(buffer)
+                                      : (uint8_t)length;
+
+        if (!read_eeprom(address, buffer, chunk))
+            return false;
+
+        crc = K6APP_CRC32Update(crc, buffer, chunk);
+        address += chunk;
+        length -= chunk;
+    }
+
+    *result = crc ^ 0xFFFFFFFFu;
+    return true;
+}
+
+bool K6APP_VerifySlot(K6_AppEEPROMRead read_eeprom,
+                      uint8_t slot_index,
+                      K6_AppSlotInfo *info)
+{
+    K6_AppSlotInfo local;
+    uint32_t code_crc;
+    uint32_t asset_crc;
+
+    if (read_eeprom == NULL || slot_index >= K6_APP_SLOT_COUNT)
+        return false;
+
+    if (!K6APP_ReadSlotInfo(read_eeprom, slot_index, &local))
+        return false;
+
+    if (!K6APP_CRC32EEPROMRange(
+            read_eeprom,
+            local.slot_address + K6_APP_HEADER_SIZE,
+            local.header.image_size,
+            &code_crc))
+        return false;
+
+    if (code_crc != local.header.image_crc32)
+        return false;
+
+    if (local.header.asset_size != 0u) {
+        if (!K6APP_CRC32EEPROMRange(
+                read_eeprom,
+                local.slot_address + K6_APP_HEADER_SIZE +
+                    local.header.image_size,
+                local.header.asset_size,
+                &asset_crc))
+            return false;
+    } else {
+        asset_crc = 0u;
+    }
+
+    if (asset_crc != local.header.asset_crc32)
+        return false;
+
+    if (info != NULL)
+        *info = local;
+
+    return true;
+}
+
+bool K6APP_Install(K6_AppEEPROMRead read_eeprom,
+                   K6_AppEEPROMWrite write_eeprom,
+                   uint8_t slot_index,
+                   const void *package,
+                   uint32_t package_size)
+{
+    const uint8_t *bytes = (const uint8_t *)package;
+    K6_AppHeader header;
+    K6_AppHeader uncommitted;
+    uint8_t buffer[K6_APP_VERIFY_CHUNK];
+    uint32_t slot_address;
+    uint32_t expected_size;
+    uint32_t offset;
+
+    if (read_eeprom == NULL || write_eeprom == NULL ||
+        package == NULL || slot_index >= K6_APP_SLOT_COUNT ||
+        package_size < K6_APP_HEADER_SIZE ||
+        package_size > K6_APP_SLOT_SIZE)
+        return false;
+
+    memcpy(&header, bytes, sizeof(header));
+    if (!K6APP_HeaderBasicValid(&header))
+        return false;
+
+    expected_size = K6_APP_HEADER_SIZE + header.image_size +
+                    header.asset_size;
+    if (expected_size != package_size)
+        return false;
+
+    if (K6APP_CRC32(bytes + K6_APP_HEADER_SIZE,
+                    header.image_size) != header.image_crc32)
+        return false;
+
+    if (K6APP_CRC32(bytes + K6_APP_HEADER_SIZE + header.image_size,
+                    header.asset_size) != header.asset_crc32)
+        return false;
+
+    slot_address = K6_APP_EEPROM_BASE +
+                   ((uint32_t)slot_index * K6_APP_SLOT_SIZE);
+
+    /* Never overwrite an occupied slot; erase/replacement is a separate action. */
+    for (offset = 0u; offset < K6_APP_SLOT_SIZE;
+         offset += sizeof(buffer)) {
+        if (!read_eeprom(slot_address + offset,
+                         buffer, (uint8_t)sizeof(buffer)))
+            return false;
+
+        for (uint32_t i = 0u; i < sizeof(buffer); ++i) {
+            if (buffer[i] != 0xFFu)
+                return false;
+        }
+    }
+
+    /*
+     * First make the slot explicitly invalid. A reset during the following
+     * page writes therefore cannot expose a half-installed APP as runnable.
+     */
+    uncommitted = header;
+    uncommitted.flags &= (uint16_t)~K6_APP_FLAG_COMMITTED;
+    if (!K6APP_WritePageSafe(write_eeprom, slot_address,
+                             (const uint8_t *)&uncommitted,
+                             sizeof(uncommitted)))
+        return false;
+
+    /* Code and read-only assets are contiguous after the 64-byte header. */
+    if (!K6APP_WritePageSafe(write_eeprom,
+                             slot_address + K6_APP_HEADER_SIZE,
+                             bytes + K6_APP_HEADER_SIZE,
+                             package_size - K6_APP_HEADER_SIZE))
+        return false;
+
+    /* Read back every byte of code and assets before committing the header. */
+    for (offset = K6_APP_HEADER_SIZE; offset < package_size;
+         offset += sizeof(buffer)) {
+        const uint8_t chunk =
+            ((package_size - offset) > sizeof(buffer))
+                ? (uint8_t)sizeof(buffer)
+                : (uint8_t)(package_size - offset);
+
+        if (!read_eeprom(slot_address + offset, buffer, chunk) ||
+            memcmp(buffer, bytes + offset, chunk) != 0)
+            return false;
+    }
+
+    /* Verify both stored CRCs while the header is still uncommitted. */
+    {
+        uint32_t code_crc;
+        uint32_t asset_crc;
+
+        if (!K6APP_CRC32EEPROMRange(
+                read_eeprom, slot_address + K6_APP_HEADER_SIZE,
+                header.image_size, &code_crc) ||
+            code_crc != header.image_crc32)
+            return false;
+
+        if (header.asset_size != 0u) {
+            if (!K6APP_CRC32EEPROMRange(
+                    read_eeprom,
+                    slot_address + K6_APP_HEADER_SIZE + header.image_size,
+                    header.asset_size, &asset_crc) ||
+                asset_crc != header.asset_crc32)
+                return false;
+        } else {
+            asset_crc = 0u;
+        }
+
+        if (asset_crc != header.asset_crc32)
+            return false;
+    }
+
+    /* Commit is a separate final 64-byte page-safe write. */
+    if (!K6APP_WritePageSafe(write_eeprom, slot_address,
+                             (const uint8_t *)&header,
+                             sizeof(header)))
+        return false;
+
+    return K6APP_VerifySlot(read_eeprom, slot_index, NULL);
+}
+
 bool K6APP_Load(K6_AppEEPROMRead read_eeprom,
                 const K6_AppSlotInfo *info,
                 void *overlay_ram,
