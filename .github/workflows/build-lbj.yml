@@ -3,7 +3,7 @@ name: Build K6 LBJ RX
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/k6-overlay-apps]
     paths:
       - "FirmwareOverlay/**"
       - "tools/**"
