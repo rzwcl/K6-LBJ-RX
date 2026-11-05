@@ -56,17 +56,17 @@ def load_app(data: bytes):
     return metadata, code
 
 def disassemble(code: bytes, vma: int):
-    from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS, CS_GRP_CALL, CS_OP_IMM
-    from capstone import CS_OP_MEM
-    from capstone.arm_const import ARM_REG_PC
+    from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
+    import re
+
     engine = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
-    engine.detail = True
-    # FAP1 contains literal pools and constants inside the linked code range.
-    # Skip invalid halfwords, rather than terminating at the first pool.
+    # Capstone skip-data mode is incompatible with detail mode. Keep it off:
+    # BL targets are extracted from the rendered immediate operand instead.
     def skip_thumb_halfword(_code, _size, _offset, _user_data):
         return 2
     engine.skipdata_setup = (".hword", skip_thumb_halfword, None)
     engine.skipdata = True
+
     instructions = list(engine.disasm(code, vma))
     lines = []
     calls = {}
@@ -74,17 +74,11 @@ def disassemble(code: bytes, vma: int):
         offset = insn.address - vma
         raw = insn.bytes.hex(" ")
         lines.append(f"{offset:04x}  {insn.address:08x}  {raw:<11} {insn.mnemonic:<8} {insn.op_str}")
-        if insn.group(CS_GRP_CALL) and insn.operands and insn.operands[0].type == CS_OP_IMM:
-            target = int(insn.operands[0].imm) & ~1
-            calls.setdefault(target - vma, []).append(offset)
-        if insn.mnemonic == "ldr" and len(insn.operands) >= 2:
-            mem = insn.operands[1]
-            if mem.type == CS_OP_MEM and mem.mem.base == ARM_REG_PC:
-                literal_addr = ((insn.address + 4) & ~3) + mem.mem.disp
-                literal_off = literal_addr - vma
-                if 0 <= literal_off <= len(code) - 4:
-                    value = struct.unpack_from("<I", code, literal_off)[0]
-                    lines.append(f"      ; literal +{literal_off:04x} = {value:08x}")
+        if insn.mnemonic == "bl":
+            match = re.search(r"#?(0x[0-9a-fA-F]+|[0-9]+)", insn.op_str)
+            if match:
+                target = int(match.group(1), 0) & ~1
+                calls.setdefault(target - vma, []).append(offset)
     return "\n".join(lines) + "\n", calls
 
 def render_report(metadata, full_disassembly, calls):
@@ -113,6 +107,7 @@ def render_report(metadata, full_disassembly, calls):
     out += [
         "## Important boundaries", "",
         "- Disassembly is a linear Thumb sweep with invalid halfwords emitted as .hword data. Literal pools and embedded data that happen to decode as valid opcodes can still appear as instructions; verify control-flow before assigning function boundaries.",
+        "- Capstone detail mode is disabled in skip-data mode; direct BL targets are parsed from rendered immediates. BLX register calls and indirect function pointers require separate data-flow analysis.",
         "- Code offsets are relative to the byte immediately after the 64-byte FAP1 header; runtime addresses add link_vma.",
         "- This is the published FAP1 application, not a standalone radio firmware and not original C source.",
         "- The DSP at offset 0x950 still requires semantic reconstruction; this report does not claim that the DSP is understood.",
