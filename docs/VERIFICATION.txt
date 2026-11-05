@@ -51,7 +51,9 @@ Installer:
   functions.c blocks FUNCTION_TRANSMIT in central FUNCTION_Select
   app/app.c blocks PTT and all key handling while in FUNCTION_TRANSMIT
   radio.c returns immediately from RADIO_SetTxParameters / RADIO_PrepareTX / RADIO_PrepareCssTX
-  no bootloader, EEPROM layout, calibration, or stored radio settings were modified
+  build-only CI job: no radio EEPROM, Bootloader flash, calibration, or stored firmware entries were changed.
+  Deployment is expected to append the LBJ image + one catalogue entry through the existing
+  LOSEHU Bootloader/K5WEB workflow; no replacement of the base bootloader or L_BL002 is intended.
 
 Link and memory:
   linker result: PASS
@@ -117,11 +119,13 @@ The user's uploaded LOSEHU132HS(MDC尾音).bin was verified with the pinned 0.13
   FIFO servicing latency, 2048-byte receive window, or long-burst reacquisition.
   No K6 LCD visual test, receive sensitivity test, or multi-system boot-slot test.
   No hardware-level no-transmit measurement.
-  No flashing, EEPROM changes, bootloader changes, or calibration writes.
+  No flashing or radio EEPROM changes have been performed yet. Adding LBJ to the existing
+  firmware selector will necessarily write its image and a new catalogue entry to EEPROM.
 
 ## Safety status
 
   The build is a complete linked candidate, not a K6 bench-validated release.
   Do NOT flash it into a daily-use slot or overwrite the rescue image.
-  Keep the original LOSEHU firmware, rescue firmware, and bootloader unchanged.
+  Preserve existing daily/rescue firmware entries and both existing Bootloader stages;
+  add LBJ as another entry through the current selector workflow instead of replacing them.
   First validate on a separate spare multi-system slot after RF and no-TX bench checks.
