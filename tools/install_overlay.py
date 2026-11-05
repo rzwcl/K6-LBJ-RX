@@ -109,8 +109,8 @@ def main() -> int:
     # the heap start symbol expected by newlib's nosys _sbrk implementation.
     firmware_ld = insert_once(
         firmware_ld,
-        "    /* Check that there is enough RAM */",
-        "    end = .;\n    _end = .;\n\n",
+        "/* Check that there is enough RAM */",
+        "\tend = .;\n\t_end = .;\n\n",
         "    end = .;",
         "firmware.ld",
     )
