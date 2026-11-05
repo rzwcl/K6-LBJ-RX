@@ -43,3 +43,14 @@ jobs:
             -o tdcs-radio-tests
       - name: Run TDCS radio tests
         run: ./tdcs-radio-tests
+      - name: Compile TDCS application tests with strict warnings
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -IFirmwareOverlay/protocol -IFirmwareOverlay/app \
+            FirmwareOverlay/protocol/tdcs_protocol.c \
+            FirmwareOverlay/app/tdcs_radio.c \
+            FirmwareOverlay/app/tdcs_app.c \
+            tests/test_tdcs_app.c \
+            -o tdcs-app-tests
+      - name: Run TDCS application tests
+        run: ./tdcs-app-tests
