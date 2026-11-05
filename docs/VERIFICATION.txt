@@ -1,7 +1,85 @@
 K6 LBJ RX candidate v0.2 - verification log
 Date: 2026-11-05
 
-Source-level and host tests:
+## Full upstream firmware build: PASS
+
+GitHub Actions run:
+  https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610
+  commit: e9e939fc472b64f8ca9a73b4492f3d85e9aa7fde
+  artifact: K6-LBJ-RX-LOSEHU132K
+  artifact ID: 13385797964
+  artifact URL:
+    https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610/artifacts/13385797964
+  artifact ZIP SHA-256:
+    7ce1e63b2ae95935ec6390530897d6924f3ff98685b006758c3c7132ee8b8ebf
+
+Pinned upstream:
+  repository: https://github.com/losehu/uv-k5-firmware-custom
+  tag: 0.13.2
+  commit: 021656ea13226d349e31acd6eb21079c5bab64c7
+  toolchain: arm-none-eabi-gcc 10.3.1, binutils 2.38, newlib 3.3.0
+  Python crcmod 1.7
+
+Build profile:
+  ENABLE_LBJ=1
+  ENABLE_CHINESE_FULL=4
+  ENABLE_PINYIN=0
+  ENABLE_4732=0
+  ENABLE_4732SSB=0
+  ENABLE_MESSENGER=0
+  ENABLE_MDC1200=0
+  ENABLE_AIRCOPY=0
+  ENABLE_SPECTRUM=0
+  ENABLE_DOPPLER=0
+  ENABLE_FMRADIO=0
+  ENABLE_UART=0 (driver/uart.o linked only to satisfy unconditional UART_Send reference;
+                 UART_Init and app/uart command parser are not compiled/started)
+  ENABLE_DTMF_CALLING=0 (DTMF-only references in action.c and ui/main.c guarded)
+
+Installer:
+  upstream 0.13.2 dry-run: PASS
+  overlay installation: PASS
+  second dry-run after install (idempotence): PASS
+  Makefile adds driver/uart.o only for UART_Send symbol
+  linker adds --specs=nosys.specs and firmware.map/memory-usage output
+  firmware.ld exports end and _end after .bss for nosys _sbrk
+  no bootloader, EEPROM layout, calibration, or stored radio settings were modified
+
+Link and memory:
+  linker result: PASS
+  FLASH used: 53,908 / 61,440 bytes (87.74%)
+  FLASH free: 7,532 bytes
+  RAM used: 5,128 / 16,384 bytes (31.30%)
+  RAM free: 11,256 bytes
+  arm-none-eabi-size:
+    text = 53,792
+    data = 116
+    bss  = 5,012
+    dec  = 58,920
+    hex  = 0xE628
+  linker map: upstream/firmware.map
+  end = 0x20001388
+  _end = 0x20001388
+
+Generated image:
+  raw firmware.bin: 53,908 bytes
+  packed LOSEHU132K.bin: 53,926 bytes (raw + 18 bytes)
+  CRC-16/XMODEM: 0x9DF8, verified
+  initial MSP: 0x20003FF0
+  reset vector: 0x0000010B
+  packed image SHA-256:
+    5a56a71a2529633daf82e85cd8e0e420bf8dc9a1aba8e92826bb42231ce3c8a0
+
+The user's uploaded LOSEHU132HS(MDC尾音).bin was also verified with the pinned 0.13.2 fw-pack.py:
+  packed: 61,458 bytes
+  raw: 61,440 bytes (exactly 60 KiB)
+  CRC-16/XMODEM: 0xEE94, verified
+  version field: *OEFW-LOSEHU
+  initial MSP: 0x20003FF0
+  reset vector: 0x0000010B
+
+## Host and object-level tests
+
   make clean test syntax-firmware-overlay
   host tests: PASS
   core tests: PASS
@@ -10,34 +88,24 @@ Source-level and host tests:
   normal and inverted POCSAG byte-path integration tests: PASS
   overlay C syntax: PASS (local interface stubs)
 
-ARM object-level compile:
   python3 tools/build_arm_overlay_objects.py
   Clang 17, --target=arm-none-eabi, Cortex-M0, Thumb, -Os, -fshort-enums
   7 LBJ overlay translation units: PASS
-  Output objects are ARM EABI5 relocatables; they are NOT a complete linked firmware.
+  These relocatable objects are not the final firmware; the full upstream build above is separate.
 
-Installer validation:
-  python3 -m py_compile tools/install_overlay.py tools/build_arm_overlay_objects.py
-  Synthetic LOSEHU-shaped tree --dry-run: PASS
-  Synthetic install: PASS
-  Second install (idempotence): PASS
-  Runtime RX frequency value: 82123750 (10 Hz units = 821.2375 MHz)
-  RX pointer and UHF band selector: inserted
-  Receive-only guards at RADIO_SetTxParameters / RADIO_PrepareTX / RADIO_PrepareCssTX: inserted
-  LBJ build overrides UART / VOX / DTMF calling / custom TX side functions / alarm / 1750Hz TX off
-  PTT key path blocked before generic transmit handling
-  FSK FIFO conflict guards for Messenger/MDC1200/Aircopy: inserted and parsed
-  ENABLE_LBJ default 0: daily build path remains conditionally disabled
+## Still NOT performed
 
-Not performed:
-  Full LOSEHU source checkout/build/link; arm-none-eabi-gcc/objcopy are absent here
-  Final firmware.bin generation and 60 KiB bootloader-slot size check
-  Real BK4819/K6 RF test; no live signal or injected RF test source is available
-  Verification of real chip preamble/sync behavior, byte order, polarity, and long-window reacquisition
-  K6 LCD display, receive sensitivity, and multi-boot slot test
-  Flashing, EEPROM changes, bootloader changes, or calibration writes
+  No physical K6 RF test; no live signal or injected RF source test.
+  No validation of real BK4819 preamble/sync capture, byte order, polarity,
+  FIFO servicing latency, 2048-byte receive window, or long-burst reacquisition.
+  No K6 LCD visual test, receive sensitivity test, or multi-system boot-slot test.
+  No flashing, EEPROM changes, bootloader changes, or calibration writes.
+  TX path guards are compiled into this image, but a full hardware-level
+  no-transmit verification has not been performed.
 
-Safety status:
-  Do NOT flash this candidate build yet.
-  The install script must be run only against a separate LOSEHU source copy, not the daily firmware worktree.
-  The installer itself does not write EEPROM, bootloader, calibration, or radio storage.
+## Safety status
+
+  The build is a complete linked candidate, not a K6 bench-validated release.
+  Do NOT flash it into a daily-use slot or overwrite the rescue image.
+  Keep the original LOSEHU firmware, rescue firmware, and bootloader unchanged.
+  First validate on a separate spare multi-system slot after RF and no-TX bench checks.
