@@ -1,4 +1,4 @@
-#include "tdcsrx_recovered_protocol.h"
+#include "tdcsrx_recovered_stream.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -186,9 +186,109 @@ static void test_bch_syndrome_and_single_bit_correction(void)
            "all 26 single-bit positions corrected: PASS\n", unique);
 }
 
+
+static uint32_t make_bch_codeword(uint16_t data);
+
+static void feed_sync_word(tdcsrx_stream_state_t *state, uint32_t word,
+                           unsigned int corrupt_mask,
+                           tdcsrx_stream_event_t expected_event)
+{
+    unsigned int bit;
+    tdcsrx_stream_event_t event = TDCSRX_STREAM_NO_EVENT;
+    for (bit = 0u; bit < 32u; ++bit) {
+        uint8_t value = (uint8_t)((word >> (31u - bit)) & 1u);
+        if ((corrupt_mask & (1u << bit)) != 0u)
+            value ^= 1u;
+        event = tdcsrx_stream_feed_bit(state, value, NULL, NULL);
+        if (bit != 31u)
+            assert(event == TDCSRX_STREAM_NO_EVENT);
+    }
+    assert(event == expected_event);
+}
+
+static void feed_codeword(tdcsrx_stream_state_t *state, uint32_t codeword,
+                          uint16_t expected_data, int expected_corrected_bit)
+{
+    unsigned int bit;
+    tdcsrx_stream_event_t event = TDCSRX_STREAM_NO_EVENT;
+    uint16_t decoded = 0u;
+    int corrected = -99;
+
+    for (bit = 0u; bit < TDCSRX_CODEWORD_BITS; ++bit) {
+        uint8_t value = (uint8_t)((codeword >> (25u - bit)) & 1u);
+        if (state->inverted)
+            value ^= 1u;
+        event = tdcsrx_stream_feed_bit(state, value, &decoded, &corrected);
+        if (bit + 1u < TDCSRX_CODEWORD_BITS)
+            assert(event == TDCSRX_STREAM_NO_EVENT);
+    }
+
+    assert(event == TDCSRX_STREAM_CODEWORD_READY);
+    assert(decoded == expected_data);
+    assert(corrected == expected_corrected_bit);
+}
+
+static void test_stream_sync_and_codeword_normal(void)
+{
+    tdcsrx_stream_state_t state;
+    uint32_t codeword = make_bch_codeword(0x5aa5u);
+    tdcsrx_stream_init(&state);
+    feed_sync_word(&state, TDCSRX_SYNC_WORD, 0u,
+                   TDCSRX_STREAM_SYNC_ACQUIRED);
+    assert(state.synchronized);
+    assert(!state.inverted);
+    feed_codeword(&state, codeword ^ (1u << 7), 0x5aa5u, 7);
+}
+
+static void test_stream_sync_and_codeword_inverted(void)
+{
+    tdcsrx_stream_state_t state;
+    uint32_t codeword = make_bch_codeword(0xa55au);
+    tdcsrx_stream_init(&state);
+    feed_sync_word(&state, ~TDCSRX_SYNC_WORD, 0u,
+                   TDCSRX_STREAM_SYNC_ACQUIRED);
+    assert(state.synchronized);
+    assert(state.inverted);
+    feed_codeword(&state, codeword, 0xa55au, -1);
+}
+
+static void test_stream_sync_error_tolerance(void)
+{
+    tdcsrx_stream_state_t state;
+    tdcsrx_stream_init(&state);
+    feed_sync_word(&state, TDCSRX_SYNC_WORD, (1u << 3) | (1u << 19),
+                   TDCSRX_STREAM_SYNC_ACQUIRED);
+    assert(state.synchronized);
+    assert(!state.inverted);
+}
+
+static void test_stream_rejects_three_sync_errors(void)
+{
+    tdcsrx_stream_state_t state;
+    unsigned int bit;
+    unsigned int acquisitions = 0u;
+    tdcsrx_stream_init(&state);
+
+    for (bit = 0u; bit < 32u; ++bit) {
+        uint8_t value = (uint8_t)((TDCSRX_SYNC_WORD >> (31u - bit)) & 1u);
+        if (bit == 1u || bit == 8u || bit == 23u)
+            value ^= 1u;
+        if (tdcsrx_stream_feed_bit(&state, value, NULL, NULL) ==
+            TDCSRX_STREAM_SYNC_ACQUIRED)
+            ++acquisitions;
+    }
+    assert(acquisitions == 0u);
+    assert(!state.synchronized);
+}
+
+
 int main(void)
 {
     test_crc();
+    test_stream_sync_and_codeword_normal();
+    test_stream_sync_and_codeword_inverted();
+    test_stream_sync_error_tolerance();
+    test_stream_rejects_three_sync_errors();
     test_parse_variant_1f();
     test_parse_variant_ff();
     test_rejections();
