@@ -99,7 +99,7 @@ LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=
 
 ## 下一步工作顺序
 
-1. 审计真实固件的所有 TX 入口和 PTT/侧键路径；虽然主要 TX 入口和 PTT 事件已加保护，仍需完成静态调用链审计及硬件 no-TX 验证。
+1. 固定 0.13.2 源码的 TX 调用链静态审计已完成：中心 FUNCTION_Select、PTT/Transmit 键处理、三个 RADIO TX 入口和相关 feature flags 均有保护；下一步只剩 K6 实机 no-TX 测量，确认 BK4819 PA/发射路径没有实际 RF 输出。
 2. 对 lbj_radio.c 做真实芯片 FSK 测试：前导码、sync 消耗、FIFO word/byte 顺序、MSB-first、正常/反相、2048-byte 窗口和重捕获。
 3. 测量 FIFO almost-full 到主循环消费的最坏延迟，压测 128-bit queue 溢出和丢包恢复。
 4. 验证 UI 实机显示、历史浏览、MENU/EXIT/UP/DOWN 按键。
