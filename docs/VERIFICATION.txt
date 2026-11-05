@@ -1,0 +1,43 @@
+K6 LBJ RX candidate v0.2 - verification log
+Date: 2026-11-05
+
+Source-level and host tests:
+  make clean test syntax-firmware-overlay
+  host tests: PASS
+  core tests: PASS
+  app tests: PASS
+  BK4819 RF register/FIFO adapter tests: PASS
+  normal and inverted POCSAG byte-path integration tests: PASS
+  overlay C syntax: PASS (local interface stubs)
+
+ARM object-level compile:
+  python3 tools/build_arm_overlay_objects.py
+  Clang 17, --target=arm-none-eabi, Cortex-M0, Thumb, -Os, -fshort-enums
+  7 LBJ overlay translation units: PASS
+  Output objects are ARM EABI5 relocatables; they are NOT a complete linked firmware.
+
+Installer validation:
+  python3 -m py_compile tools/install_overlay.py tools/build_arm_overlay_objects.py
+  Synthetic LOSEHU-shaped tree --dry-run: PASS
+  Synthetic install: PASS
+  Second install (idempotence): PASS
+  Runtime RX frequency value: 82123750 (10 Hz units = 821.2375 MHz)
+  RX pointer and UHF band selector: inserted
+  Receive-only guards at RADIO_SetTxParameters / RADIO_PrepareTX / RADIO_PrepareCssTX: inserted
+  LBJ build overrides UART / VOX / DTMF calling / custom TX side functions / alarm / 1750Hz TX off
+  PTT key path blocked before generic transmit handling
+  FSK FIFO conflict guards for Messenger/MDC1200/Aircopy: inserted and parsed
+  ENABLE_LBJ default 0: daily build path remains conditionally disabled
+
+Not performed:
+  Full LOSEHU source checkout/build/link; arm-none-eabi-gcc/objcopy are absent here
+  Final firmware.bin generation and 60 KiB bootloader-slot size check
+  Real BK4819/K6 RF test; no live signal or injected RF test source is available
+  Verification of real chip preamble/sync behavior, byte order, polarity, and long-window reacquisition
+  K6 LCD display, receive sensitivity, and multi-boot slot test
+  Flashing, EEPROM changes, bootloader changes, or calibration writes
+
+Safety status:
+  Do NOT flash this candidate build yet.
+  The install script must be run only against a separate LOSEHU source copy, not the daily firmware worktree.
+  The installer itself does not write EEPROM, bootloader, calibration, or radio storage.

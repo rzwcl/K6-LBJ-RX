@@ -1,0 +1,19 @@
+Cortex-M0 ARM EABI overlay object size report
+Compiler: Clang 17
+Flags: --target=arm-none-eabi -mcpu=cortex-m0 -mthumb -std=c2x -Os -fshort-enums -ffunction-sections -fdata-sections
+Input headers: local build-arm-includes + tests/stubs (not production LOSEHU headers)
+
+   text   data    bss    total  object
+   1192      0      0     1192  lbj.o
+    868      0   2920     3788  lbj_app.o
+   3199      0      0     3199  lbj_core.o
+   2073      0      0     2073  lbj_loco.o
+    926      0      0      926  lbj_pocsag.o
+    436      0      9      445  lbj_radio.o
+   2976      0      0     2976  lbj_train_type.o
+  ------ ------ ------  ------
+  11670      0   2929  14599  sum of object sections
+
+These are unlinked overlay object section sizes only. They are NOT the final firmware.bin size,
+do not include the LOSEHU base firmware/linker startup/runtime, and cannot be compared directly
+to the multi-boot 60 KiB slot limit.
