@@ -1,0 +1,35 @@
+name: TDCSRX RX 0.3 binary disassembly
+
+on:
+  push:
+    paths:
+      - "tools/disassemble_tdcsrx_app.py"
+      - ".github/workflows/analyze-tdcsrx-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disassemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Capstone
+        run: python -m pip install --disable-pip-version-check capstone
+      - name: Fetch, validate and disassemble published TDCSRX app
+        run: |
+          python tools/disassemble_tdcsrx_app.py \
+            --output tdcsrx_rx03_disassembly.md \
+            --raw-disassembly tdcsrx_rx03_disassembly.asm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TDCSRX-RX03-Thumb-disassembly
+          path: |
+            tdcsrx_rx03_disassembly.md
+            tdcsrx_rx03_disassembly.asm
+          if-no-files-found: error
+          retention-days: 30
