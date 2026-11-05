@@ -130,8 +130,12 @@ The user's uploaded LOSEHU132HS(MDC尾音).bin was verified with the pinned 0.13
   add LBJ as another entry through the current selector workflow instead of replacing them.
   First validate on a separate spare multi-system slot after RF and no-TX bench checks.
 
-TDCSRX RX 0.3 recovered parser research (separate from the K6 LBJ build):
+TDCSRX RX 0.3 recovered parser and signal-path research (separate from the K6 LBJ build):
 - GCC strict build and host tests: PASS.
 - AddressSanitizer + UndefinedBehaviorSanitizer host tests: PASS.
 - Covers synthetic 45-byte frame parsing, both accepted header variants, payload fields, CRC and malformed-frame rejection.
-- Does NOT verify RF demodulation, original BCH correction, DSP/bit framing, K6 hardware, or a complete TDCSRX firmware image.
+- Original BCH polynomial confirmed from literal pool at code offset 0x200: bytes B9 05 00 00 => uint32 LE 0x05B9.
+- 26 unique single-bit syndromes; synthetic codewords with all 26 possible one-bit flips corrected by reconstructed BCH routine.
+- Audio sample loop: 9,600 samples/s, ADC low 12 bits, call chain 0x950 -> 0xA80 -> 0x484 -> 0x61C.
+- DSP coefficient tables at code offsets 0xE27 (8-phase 1,200 Hz) and 0xE2F (16-phase third harmonic 1,800 Hz); dual-tone I/Q identification is static analysis.
+- Still does NOT verify physical RF reception, fixed-point DSP C port, K6 hardware, or a complete TDCSRX firmware image.
