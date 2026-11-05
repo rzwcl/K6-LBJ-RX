@@ -83,6 +83,7 @@ static void test_initialization_programs_ffsk_registers(void)
 {
     memset(&gMock, 0, sizeof(gMock));
     gMock.regs[0x5Eu] = 0x0201u;
+    gMock.regs[0x3Fu] = 0x0040u; /* unrelated existing interrupt */
 
     assert(TDCS_RadioInit(&kMockOps));
     assert(gMock.rx_on_calls == 1u);
@@ -96,7 +97,7 @@ static void test_initialization_programs_ffsk_registers(void)
     assert(gMock.regs[0x5Eu] == 0x0201u);
     assert(gMock.regs[0x59u] == 0x1068u);
     assert(gMock.regs[0x3Fu] ==
-           (TDCS_RADIO_IRQ_FSK_SYNC |
+           (0x0040u | TDCS_RADIO_IRQ_FSK_SYNC |
             TDCS_RADIO_IRQ_FIFO_ALMOST_FULL |
             TDCS_RADIO_IRQ_RX_FINISHED));
 }
