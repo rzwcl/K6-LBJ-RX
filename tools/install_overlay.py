@@ -120,69 +120,73 @@ def main() -> int:
     # out with that feature; keep the rest of the main screen intact.
     ui_main_c = replace_once(
         ui_main_c,
-        "#if 1\n"
-        "            if (gSetting_live_DTMF_decoder && gDTMF_RX_live[0] != 0) {    // show live DTMF decode\n"
-        "                const unsigned int len = strlen(gDTMF_RX_live);\n"
-        "                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars\n"
-\n"
-        "                if (gScreenToDisplay != DISPLAY_MAIN ||\n"
-        "                    gDTMF_CallState != DTMF_CALL_STATE_NONE)\n"
-        "                    return;\n"
-\n"
-        "                center_line = CENTER_LINE_DTMF_DEC;\n"
-\n"
-        "                sprintf(String, \\\"DTMF %s\\\", gDTMF_RX_live + idx);\n"
-        "                UI_PrintStringSmall(String, 2, 0, 3);\n"
-        "            }\n"
-        "#else\n"
-        "            if (gSetting_live_DTMF_decoder && gDTMF_RX_index > 0)\n"
-        "            {\t// show live DTMF decode\n"
-        "                const unsigned int len = gDTMF_RX_index;\n"
-        "                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars\n"
-\n"
-        "                if (gScreenToDisplay != DISPLAY_MAIN ||\n"
-        "                    gDTMF_CallState != DTMF_CALL_STATE_NONE)\n"
-        "                    return;\n"
-\n"
-        "                center_line = CENTER_LINE_DTMF_DEC;\n"
-\n"
-        "                sprintf(String, \\\"DTMF %s\\\", gDTMF_RX_live + idx);\n"
-        "                UI_PrintStringSmall(String, 2, 0, 3);\n"
-        "            }\n"
-        "#endif\n\n"
-        "#ifdef ENABLE_SHOW_CHARGE_LEVEL",
-        "#ifdef ENABLE_DTMF_CALLING\n#if 1\n"
-        "            if (gSetting_live_DTMF_decoder && gDTMF_RX_live[0] != 0) {    // show live DTMF decode\n"
-        "                const unsigned int len = strlen(gDTMF_RX_live);\n"
-        "                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars\n"
-\n"
-        "                if (gScreenToDisplay != DISPLAY_MAIN ||\n"
-        "                    gDTMF_CallState != DTMF_CALL_STATE_NONE)\n"
-        "                    return;\n"
-\n"
-        "                center_line = CENTER_LINE_DTMF_DEC;\n"
-\n"
-        "                sprintf(String, \\\"DTMF %s\\\", gDTMF_RX_live + idx);\n"
-        "                UI_PrintStringSmall(String, 2, 0, 3);\n"
-        "            }\n"
-        "#else\n"
-        "            if (gSetting_live_DTMF_decoder && gDTMF_RX_index > 0)\n"
-        "            {\t// show live DTMF decode\n"
-        "                const unsigned int len = gDTMF_RX_index;\n"
-        "                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars\n"
-\n"
-        "                if (gScreenToDisplay != DISPLAY_MAIN ||\n"
-        "                    gDTMF_CallState != DTMF_CALL_STATE_NONE)\n"
-        "                    return;\n"
-\n"
-        "                center_line = CENTER_LINE_DTMF_DEC;\n"
-\n"
-        "                sprintf(String, \\\"DTMF %s\\\", gDTMF_RX_live + idx);\n"
-        "                UI_PrintStringSmall(String, 2, 0, 3);\n"
-        "            }\n"
-        "#endif\n#endif\n\n"
-        "#ifdef ENABLE_SHOW_CHARGE_LEVEL",
-        "#ifdef ENABLE_DTMF_CALLING\n#if 1\n            if (gSetting_live_DTMF_decoder",
+        """#if 1
+            if (gSetting_live_DTMF_decoder && gDTMF_RX_live[0] != 0) {    // show live DTMF decode
+                const unsigned int len = strlen(gDTMF_RX_live);
+                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars
+
+                if (gScreenToDisplay != DISPLAY_MAIN ||
+                    gDTMF_CallState != DTMF_CALL_STATE_NONE)
+                    return;
+
+                center_line = CENTER_LINE_DTMF_DEC;
+
+                sprintf(String, "DTMF %s", gDTMF_RX_live + idx);
+                UI_PrintStringSmall(String, 2, 0, 3);
+            }
+#else
+            if (gSetting_live_DTMF_decoder && gDTMF_RX_index > 0)
+            {	// show live DTMF decode
+                const unsigned int len = gDTMF_RX_index;
+                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars
+
+                if (gScreenToDisplay != DISPLAY_MAIN ||
+                    gDTMF_CallState != DTMF_CALL_STATE_NONE)
+                    return;
+
+                center_line = CENTER_LINE_DTMF_DEC;
+
+                sprintf(String, "DTMF %s", gDTMF_RX_live + idx);
+                UI_PrintStringSmall(String, 2, 0, 3);
+            }
+#endif
+
+#ifdef ENABLE_SHOW_CHARGE_LEVEL""",
+        """#ifdef ENABLE_DTMF_CALLING
+#if 1
+            if (gSetting_live_DTMF_decoder && gDTMF_RX_live[0] != 0) {    // show live DTMF decode
+                const unsigned int len = strlen(gDTMF_RX_live);
+                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars
+
+                if (gScreenToDisplay != DISPLAY_MAIN ||
+                    gDTMF_CallState != DTMF_CALL_STATE_NONE)
+                    return;
+
+                center_line = CENTER_LINE_DTMF_DEC;
+
+                sprintf(String, "DTMF %s", gDTMF_RX_live + idx);
+                UI_PrintStringSmall(String, 2, 0, 3);
+            }
+#else
+            if (gSetting_live_DTMF_decoder && gDTMF_RX_index > 0)
+            {	// show live DTMF decode
+                const unsigned int len = gDTMF_RX_index;
+                const unsigned int idx = (len > (17 - 5)) ? len - (17 - 5) : 0;  // limit to last 'n' chars
+
+                if (gScreenToDisplay != DISPLAY_MAIN ||
+                    gDTMF_CallState != DTMF_CALL_STATE_NONE)
+                    return;
+
+                center_line = CENTER_LINE_DTMF_DEC;
+
+                sprintf(String, "DTMF %s", gDTMF_RX_live + idx);
+                UI_PrintStringSmall(String, 2, 0, 3);
+            }
+#endif
+#endif
+
+#ifdef ENABLE_SHOW_CHARGE_LEVEL""",
+        "#ifdef ENABLE_DTMF_CALLING\\n#if 1\\n            if (gSetting_live_DTMF_decoder",
         "ui/main.c",
     )
 
