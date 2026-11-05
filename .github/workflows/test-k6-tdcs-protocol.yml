@@ -1,19 +1,23 @@
-name: K6 TDCS protocol tests
+name: K6 TDCS receiver tests
 
 on:
   push:
     branches:
       - k6-full-firmware
     paths:
+      - "FirmwareOverlay/app/tdcs_*.c"
+      - "FirmwareOverlay/app/tdcs_*.h"
       - "FirmwareOverlay/protocol/tdcs_protocol.c"
       - "FirmwareOverlay/protocol/tdcs_protocol.h"
-      - "tests/test_tdcs_protocol.c"
+      - "tests/test_tdcs_*.c"
       - ".github/workflows/test-k6-tdcs-protocol.yml"
   pull_request:
     paths:
+      - "FirmwareOverlay/app/tdcs_*.c"
+      - "FirmwareOverlay/app/tdcs_*.h"
       - "FirmwareOverlay/protocol/tdcs_protocol.c"
       - "FirmwareOverlay/protocol/tdcs_protocol.h"
-      - "tests/test_tdcs_protocol.c"
+      - "tests/test_tdcs_*.c"
       - ".github/workflows/test-k6-tdcs-protocol.yml"
 
 jobs:
@@ -21,12 +25,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile with strict warnings
+      - name: Compile TDCS protocol tests with strict warnings
         run: |
           cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
             -IFirmwareOverlay/protocol \
             FirmwareOverlay/protocol/tdcs_protocol.c \
             tests/test_tdcs_protocol.c \
             -o tdcs-protocol-tests
-      - name: Run decoder tests
+      - name: Run TDCS protocol tests
         run: ./tdcs-protocol-tests
+      - name: Compile TDCS BK4819 radio tests with strict warnings
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -IFirmwareOverlay/protocol -IFirmwareOverlay/app \
+            FirmwareOverlay/app/tdcs_radio.c \
+            tests/test_tdcs_radio.c \
+            -o tdcs-radio-tests
+      - name: Run TDCS radio tests
+        run: ./tdcs-radio-tests
