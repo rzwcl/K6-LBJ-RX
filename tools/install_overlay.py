@@ -99,6 +99,7 @@ def main() -> int:
         "ifneq ($(ENABLE_MDC1200),0)\n$(error ENABLE_LBJ and ENABLE_MDC1200 cannot share the BK4819 FSK FIFO)\nendif\n"
         "ifneq ($(ENABLE_AIRCOPY),0)\n$(error ENABLE_LBJ and ENABLE_AIRCOPY cannot share the BK4819 FSK FIFO)\nendif\n"
         "\tLDFLAGS += --specs=nosys.specs\n"
+        "\tLDFLAGS += -Wl,-Map=firmware.map -Wl,--print-memory-usage\n"
         "\tCFLAGS += -DENABLE_LBJ\nendif\n\n",
         "CFLAGS += -DENABLE_LBJ",
         "Makefile",
