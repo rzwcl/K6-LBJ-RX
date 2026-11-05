@@ -1,0 +1,34 @@
+name: Analyze K6 EEPROM backup (read-only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/k6-overlay-apps]
+    paths:
+      - "Thu Nov 05 2026 12_10_17 GMT+0800 (中国标准时间)_backup.bin"
+      - "tools/analyze_k6_eeprom_backup.py"
+      - ".github/workflows/analyze-k6-eeprom-backup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout backup and analyzer
+        uses: actions/checkout@v4
+
+      - name: Analyze EEPROM image without writing anything
+        run: |
+          python3 tools/analyze_k6_eeprom_backup.py \
+            --file "Thu Nov 05 2026 12_10_17 GMT+0800 (中国标准时间)_backup.bin" \
+            --report eeprom-backup-report.json
+
+      - name: Upload analysis report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: K6-EEPROM-backup-read-only-report
+          if-no-files-found: error
+          path: eeprom-backup-report.json
