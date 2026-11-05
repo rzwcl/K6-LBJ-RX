@@ -62,14 +62,14 @@ LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=
 完整编译和链接：PASS
 
 - 工作流：Build K6 LBJ RX
-- 成功 run：41962240610
-- 源码提交：e9e939fc472b64f8ca9a73b4492f3d85e9aa7fde
+- 成功 run：41962799054
+- 源码提交：5f7f41d7b39ddec33922c1833481896bf4a5e38a
 - Artifact：K6-LBJ-RX-LOSEHU132K
-- Artifact ID：13385797964
-- 下载页：https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962240610/artifacts/13385797964
-- packed BIN：LOSEHU132K.bin，53,926 bytes；raw firmware.bin 53,908 bytes。
-- CRC-16/XMODEM 0x9DF8 通过。
-- FLASH：53,908 / 61,440 bytes（87.74%）；RAM：5,128 / 16,384 bytes（31.30%）。
+- Artifact ID：13386116726
+- 下载页：https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054/artifacts/13386116726
+- packed BIN：LOSEHU132K.bin，53,494 bytes；raw firmware.bin 53,476 bytes。
+- CRC-16/XMODEM 0xAEB0 通过。
+- FLASH：53,476 / 61,440 bytes（87.04%）；RAM：5,124 / 16,384 bytes（31.27%）。
 - linker map firmware.map 已包含在 artifact。
 - 作者 0.13.2 真实源码树 dry-run、overlay 安装、二次 dry-run 幂等性检查均通过。
 
@@ -85,7 +85,7 @@ LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=
 - 作者 LOSEHU 0.13.2 真实源码树：dry-run、overlay 安装、二次 dry-run 幂等性检查通过。
 - ARM GCC 10.3.1 完整编译、链接通过；生成 firmware ELF、raw firmware.bin、packed LOSEHU132K.bin 和 firmware.map。
 - 链接器报告 FLASH 53,908/61,440 bytes、RAM 5,128/16,384 bytes。
-- 打包输出 CRC-16/XMODEM 0x9DF8 验证通过；初始 MSP/复位向量落在预期地址范围。
+- 打包输出 CRC-16/XMODEM 0xAEB0 验证通过；初始 MSP/复位向量落在预期地址范围。
 - 构建产物保存在 Actions artifact；不是实机测试结果。
 
 完整验证数据见 docs/VERIFICATION.txt。
