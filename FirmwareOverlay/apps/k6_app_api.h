@@ -20,6 +20,10 @@
 
 #define K6_APP_LINK_VMA 0x20001800u
 #define K6_APP_RAM_SIZE 0x00001800u
+#define K6_APP_EEPROM_BASE 0x0002A400u
+#define K6_APP_SLOT_SIZE 0x00002000u
+#define K6_APP_SLOT_COUNT 8u
+#define K6_APP_HEADER_SIZE 64u
 
 typedef enum {
     K6_APP_KEY_0 = 0,
@@ -45,11 +49,25 @@ typedef enum {
 } K6_AppKey;
 
 /*
+ * Receive profile: the resident firmware validates the requested frequency
+ * and applies only receive-side BK4819 settings. The APP ABI deliberately
+ * exposes no arbitrary BK4819 register write and no transmit function.
+ */
+typedef struct {
+    uint32_t frequency_hz;
+    uint32_t sync_word;
+    uint8_t bitrate;
+    uint8_t deviation;
+    uint8_t filter;
+    uint8_t flags;
+} K6_AppRxProfile;
+
+/*
  * Resident services. The application runs from the fixed SRAM overlay and
  * must use this table instead of directly linking to firmware symbols.
  *
- * radio_read/radio_write expose BK4819 registers. The host must restore the
- * current VFO/radio configuration when the app returns.
+ * asset_read() accesses the APP slot tail in EEPROM; assets do not consume
+ * overlay SRAM. key_get_event() returns one debounced event per key press.
  */
 typedef struct K6_AppAPI {
     uint8_t abi_major;
@@ -61,15 +79,16 @@ typedef struct K6_AppAPI {
     void (*display_refresh)(void);
     void (*backlight_on)(void);
 
-    uint8_t (*get_key)(void);
+    uint8_t (*key_get_event)(void);
     uint32_t (*millis)(void);
     void (*delay_ms)(uint32_t ms);
 
-    uint16_t (*radio_read)(uint8_t reg);
-    void (*radio_write)(uint8_t reg, uint16_t value);
-    void (*radio_restore)(void);
+    bool (*rx_configure)(const K6_AppRxProfile *profile);
+    uint8_t (*rx_fifo_read)(uint16_t *words, uint8_t capacity);
+    uint16_t (*rx_read_rssi)(void);
+    void (*rx_restore)(void);
 
-    /* Read-only APP resources kept in the EEPROM slot after the code image. */
+    uint32_t asset_size;
     bool (*asset_read)(uint32_t offset, void *destination, uint16_t length);
 } K6_AppAPI;
 
