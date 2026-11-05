@@ -55,6 +55,7 @@ def main() -> int:
     ui_c = read(root / "ui/ui.c")
     main_c = read(root / "main.c")
     radio_c = read(root / "radio.c")
+    functions_c = read(root / "functions.c")
     firmware_ld = read(root / "firmware.ld")
 
     makefile = insert_once(
@@ -103,6 +104,15 @@ def main() -> int:
         "\tCFLAGS += -DENABLE_LBJ\nendif\n\n",
         "CFLAGS += -DENABLE_LBJ",
         "Makefile",
+    )
+
+    # Block the central state transition before FUNCTION_Transmit can run.
+    functions_c = insert_once(
+        functions_c,
+        "void FUNCTION_Select(FUNCTION_Type_t Function) {",
+        "\n#ifdef ENABLE_LBJ\n    if (Function == FUNCTION_TRANSMIT) return;\n#endif\n",
+        "if (Function == FUNCTION_TRANSMIT) return;",
+        "functions.c",
     )
 
     # The upstream linker script reserves stack space but does not export
@@ -420,7 +430,7 @@ def main() -> int:
                          ("app/action.c", action_c), ("ui/main.c", ui_main_c),
                          ("ui/ui.h", ui_h), ("ui/ui.c", ui_c),
                          ("main.c", main_c), ("radio.c", radio_c),
-                         ("firmware.ld", firmware_ld)):
+                         ("functions.c", functions_c), ("firmware.ld", firmware_ld)):
         (root / rel).write_text(content, encoding="utf-8", newline="")
 
     print("LBJ source/UI overlay installed.")
