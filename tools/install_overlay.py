@@ -110,7 +110,7 @@ def main() -> int:
     firmware_ld = insert_once(
         firmware_ld,
         "/* Check that there is enough RAM */",
-        "\tend = .;\n\t_end = .;\n\n",
+        "\n\tend = .;\n\t_end = .;\n\n",
         "end = .;",
         "firmware.ld",
     )
