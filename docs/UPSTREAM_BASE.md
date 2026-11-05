@@ -48,6 +48,12 @@ LBJ 固件是独立接收系统，不是把当前 132HS 所有功能原样保留
 
 作者 0.13.2 Makefile 在 `ENABLE_CHINESE_FULL=4`、`ENABLE_PINYIN=0`、`ENABLE_4732=0` 时生成后缀 `K`。因此 LBJ 输出名为 `LOSEHU132K.bin`：保留完整中文显示字库，不带拼音输入，也不带 SI4732 接收功能。它与用户上传的 `LOSEHU132HS` 是不同功能配置，符合独立 LBJ 接收系统的裁剪目标。本 LBJ 镜像也明确关闭 MDC1200/MDC 尾音功能，因为 MDC 与 LBJ 共用的 BK4819 FSK/FIFO 资源会冲突；它不是用户当前 132HS(MDC尾音)固件的功能替代品。
 
+## 现有 Bootloader 适配关系
+
+用户现有的多固件管理系统是 [losehu/uv-k5-bootloader-custom](https://github.com/losehu/uv-k5-bootloader-custom)，Release 为 `0.02`。其源码 README 和 EEPROM/加载代码说明：512 KiB EEPROM 存放二级引导 `L_BL002.bin`、固件目录及多个固件镜像；目录最多 64 项；选中后由二级引导把固件从 EEPROM 复制到 MCU Flash 运行。每个固件文件不得超过 60 KiB。
+
+本次 LBJ raw 镜像 53,476 bytes，处于限制以内。正确集成方式是在现有 EEPROM 固件目录中追加 LBJ 镜像及一个条目，沿用原来的 Bootloader/K5WEB 机制；不需要再设计或替换 Bootloader，也不是另造一组同时驻留 Flash 的“独立槽位”。构建阶段未写设备 EEPROM；实际加入目录时正常需要写入新增镜像与目录记录。
+
 ## 完整构建结果（2026-11-05）
 
 GitHub Actions run：`41962799054`
