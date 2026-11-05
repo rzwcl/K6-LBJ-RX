@@ -22,6 +22,53 @@ static bool mock_read(uint32_t address, void *destination, uint8_t length)
     return true;
 }
 
+#define TEST_PACKAGE_SIZE (K6_APP_HEADER_SIZE + TEST_CODE_SIZE + TEST_ASSET_SIZE)
+
+static uint32_t g_write_count;
+static uint32_t g_fail_write_at;
+
+static bool mock_write(uint32_t address, const void *source, uint8_t length)
+{
+    if ((uint64_t)address + length > EEPROM_BYTES ||
+        length > 128u ||
+        ((address & 0x7Fu) + length) > 128u)
+        return false;
+
+    ++g_write_count;
+    if (g_fail_write_at != 0u && g_write_count == g_fail_write_at)
+        return false;
+
+    memcpy(&g_eeprom[address], source, length);
+    return true;
+}
+
+static void make_package(uint8_t package[TEST_PACKAGE_SIZE])
+{
+    K6_AppHeader header;
+
+    memset(&header, 0, sizeof(header));
+    memcpy(header.magic, "K6A1", 4u);
+    header.header_version = K6_APP_HEADER_VERSION;
+    header.abi_major = K6_APP_ABI_MAJOR;
+    header.api_min = K6_APP_API_LEVEL;
+    header.image_size = TEST_CODE_SIZE;
+    header.image_crc32 = K6APP_CRC32(g_code, sizeof(g_code));
+    header.entry_offset = 0u;
+    header.flags = K6_APP_FLAG_COMMITTED;
+    memcpy(header.name, "INSTALL-TEST", sizeof("INSTALL-TEST"));
+    memcpy(header.version, "1.0", sizeof("1.0"));
+    header.link_vma = K6_APP_LINK_VMA;
+    header.bss_size = TEST_BSS_SIZE;
+    header.required_caps = 0u;
+    header.asset_size = TEST_ASSET_SIZE;
+    header.asset_crc32 = K6APP_CRC32(g_assets, sizeof(g_assets));
+
+    memcpy(package, &header, sizeof(header));
+    memcpy(package + K6_APP_HEADER_SIZE, g_code, sizeof(g_code));
+    memcpy(package + K6_APP_HEADER_SIZE + sizeof(g_code),
+           g_assets, sizeof(g_assets));
+}
+
 static void make_image(uint8_t slot, uint16_t flags)
 {
     K6_AppHeader header;
@@ -133,6 +180,78 @@ static int test_load_and_read_asset(void)
                         resource, 3u))
         return 7;
 
+    return 0;
+}
+
+static int test_install_page_safe(void)
+{
+    uint8_t package[TEST_PACKAGE_SIZE];
+    K6_AppSlotInfo info;
+
+    make_package(package);
+    g_write_count = 0u;
+    g_fail_write_at = 0u;
+
+    if (!K6APP_Install(mock_read, mock_write, 7u,
+                       package, sizeof(package)))
+        return 1;
+    if (!K6APP_VerifySlot(mock_read, 7u, &info))
+        return 2;
+    if (info.slot_index != 7u ||
+        info.header.image_size != TEST_CODE_SIZE ||
+        info.header.asset_size != TEST_ASSET_SIZE)
+        return 3;
+    if (memcmp(&g_eeprom[info.slot_address + K6_APP_HEADER_SIZE],
+               g_code, sizeof(g_code)) != 0)
+        return 4;
+    return 0;
+}
+
+static int test_install_power_loss_stays_uncommitted(void)
+{
+    uint8_t package[TEST_PACKAGE_SIZE];
+    uint32_t base = K6_APP_EEPROM_BASE + 6u * K6_APP_SLOT_SIZE;
+    K6_AppSlotInfo info;
+    K6_AppHeader header;
+
+    make_package(package);
+    g_write_count = 0u;
+    g_fail_write_at = 3u; /* header invalidation, then body page, then fail */
+
+    if (K6APP_Install(mock_read, mock_write, 6u,
+                      package, sizeof(package)))
+        return 1;
+
+    memcpy(&header, &g_eeprom[base], sizeof(header));
+    if ((header.flags & K6_APP_FLAG_COMMITTED) != 0u)
+        return 2;
+    if (K6APP_ReadSlotInfo(mock_read, 6u, &info))
+        return 3;
+
+    g_fail_write_at = 0u;
+    return 0;
+}
+
+static int test_install_refuses_occupied_slot(void)
+{
+    uint8_t package[TEST_PACKAGE_SIZE];
+    uint32_t base = K6_APP_EEPROM_BASE + 5u * K6_APP_SLOT_SIZE;
+    uint8_t original_header[K6_APP_HEADER_SIZE];
+
+    make_image(5u, K6_APP_FLAG_COMMITTED);
+    memcpy(original_header, &g_eeprom[base], sizeof(original_header));
+    make_package(package);
+    g_write_count = 0u;
+    g_fail_write_at = 0u;
+
+    if (K6APP_Install(mock_read, mock_write, 5u,
+                      package, sizeof(package)))
+        return 1;
+    if (memcmp(original_header, &g_eeprom[base],
+               sizeof(original_header)) != 0)
+        return 2;
+    if (g_write_count != 0u)
+        return 3;
     return 0;
 }
 
@@ -259,6 +378,9 @@ int main(void)
 
     RUN_TEST(test_load_and_read_asset);
     RUN_TEST(test_build_api_asset_binding);
+    RUN_TEST(test_install_page_safe);
+    RUN_TEST(test_install_power_loss_stays_uncommitted);
+    RUN_TEST(test_install_refuses_occupied_slot);
     RUN_TEST(test_refresh_and_entry);
     RUN_TEST(test_reject_uncommitted);
     RUN_TEST(test_reject_code_crc);
