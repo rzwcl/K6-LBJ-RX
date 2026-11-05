@@ -1,6 +1,7 @@
 > **长期交接入口：** 新会话请先阅读 [docs/CONTINUATION.md](docs/CONTINUATION.md)，以 GitHub `main` 分支为准继续开发。该文档记录仓库文件、固定上游源码版本、验证边界和下一步实机验证顺序。
 > **上游源码基线：** 作者 [losehu/uv-k5-firmware-custom](https://github.com/losehu/uv-k5-firmware-custom) 的 `0.13.2` 标签（commit `021656ea13226d349e31acd6eb21079c5bab64c7`）；版本对应分析见 [docs/UPSTREAM_BASE.md](docs/UPSTREAM_BASE.md)。
 > **完整固件构建：** GitHub Actions 的 [Build K6 LBJ RX](.github/workflows/build-lbj.yml) 从固定上游源码拉取、安装 overlay 并构建，结果保存在 Actions artifacts。
+> **最新已验证构建产物：** [LOSEHU132K.bin / firmware.map / ELF](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054/artifacts/13386116726)（53,494 B packed，CRC `0xAEB0`）。
 
 # K6 LBJ 独立接收固件 v0.2（UI rev3 + BK4819 FSK 适配）
 
