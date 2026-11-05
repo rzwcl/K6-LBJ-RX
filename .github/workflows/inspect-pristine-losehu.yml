@@ -34,13 +34,13 @@ jobs:
         working-directory: upstream
         run: |
           set -euo pipefail
-          make build ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=0 ENABLE_4732=1
+          make build ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=1 ENABLE_4732=1
           test -s firmware
           {
             echo "Purpose: RAM/layout inspection only; NOT a flash package."
             echo "Upstream tag: 0.13.2"
             echo "Upstream commit: $(git rev-parse HEAD)"
-            echo "Config: ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=0 ENABLE_4732=1"
+            echo "Config: ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=1 ENABLE_4732=1"
             echo
             echo "=== ARM size ==="
             arm-none-eabi-size firmware
