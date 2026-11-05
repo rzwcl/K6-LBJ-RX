@@ -202,8 +202,8 @@ def main() -> int:
     # requiring one exact blank-line sequence.
     if "gRxVfo->freq_config_RX.Frequency = 82123750u" not in main_c:
         setup_pattern = re.compile(
-            r"(?m)^(?P<indent>[ \\t]*)RADIO_SelectVfos\\(\\);[ \\t]*\\r?\\n"
-            r"(?:[ \\t]*\\r?\\n)*(?P<setup_indent>[ \\t]*)RADIO_SetupRegisters\\(true\\);"
+            r"(?m)^(?P<indent>[ \t]*)RADIO_SelectVfos\(\);[ \t]*\r?\n"
+            r"(?:[ \t]*\r?\n)*(?P<setup_indent>[ \t]*)RADIO_SetupRegisters\(true\);"
         )
         matches = list(setup_pattern.finditer(main_c))
         if len(matches) != 1:
@@ -215,21 +215,21 @@ def main() -> int:
         indent = match.group("indent")
         setup_indent = match.group("setup_indent")
         replacement = (
-            f"{indent}RADIO_SelectVfos();\\n\\n"
-            "#ifdef ENABLE_LBJ\\n"
-            "    /* Fixed RX-only LBJ profile; all changes below remain in RAM. */\\n"
-            "    gEeprom.DUAL_WATCH = DUAL_WATCH_OFF;\\n"
-            "    gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;\\n"
-            "    gRxVfo->FrequencyReverse = 0;\\n"
-            "    gRxVfo->freq_config_RX.Frequency = 82123750u; /* LOSEHU frequency unit: 10 Hz */\\n"
-            "    gRxVfo->pRX = &gRxVfo->freq_config_RX;\\n"
-            "    gRxVfo->Band = BAND7_470MHz;\\n"
-            "    gRxVfo->Modulation = MODULATION_FM;\\n"
-            "#endif\\n\\n"
-            f"{setup_indent}RADIO_SetupRegisters(true);\\n"
-            "#ifdef ENABLE_LBJ\\n"
-            "    LBJ_AppInit();\\n"
-            "    LBJ_RFStart();\\n"
+            f"{indent}RADIO_SelectVfos();\n\n"
+            "#ifdef ENABLE_LBJ\n"
+            "    /* Fixed RX-only LBJ profile; all changes below remain in RAM. */\n"
+            "    gEeprom.DUAL_WATCH = DUAL_WATCH_OFF;\n"
+            "    gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;\n"
+            "    gRxVfo->FrequencyReverse = 0;\n"
+            "    gRxVfo->freq_config_RX.Frequency = 82123750u; /* LOSEHU frequency unit: 10 Hz */\n"
+            "    gRxVfo->pRX = &gRxVfo->freq_config_RX;\n"
+            "    gRxVfo->Band = BAND7_470MHz;\n"
+            "    gRxVfo->Modulation = MODULATION_FM;\n"
+            "#endif\n\n"
+            f"{setup_indent}RADIO_SetupRegisters(true);\n"
+            "#ifdef ENABLE_LBJ\n"
+            "    LBJ_AppInit();\n"
+            "    LBJ_RFStart();\n"
             "#endif"
         )
         main_c = main_c[:match.start()] + replacement + main_c[match.end():]
