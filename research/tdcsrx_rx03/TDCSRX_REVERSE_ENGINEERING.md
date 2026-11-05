@@ -95,6 +95,50 @@ fixed-point scaling, downstream decision thresholds, both state lanes, and
 resynchronization timing still need to be translated and tested before K6
 integration.
 
+
+## Sync acquisition and 26-bit word collector at code offset 0xA80
+
+The routine beginning at code offset `0xA80` is the bit/sync collector called
+from the sample discriminator. Its observed state layout and operations:
+
+- `state+0x00`: rolling 32-bit bit history, updated as
+  `rolling = (rolling << 1) | input_bit`.
+- `state+0x04`: sync-acquired flag.
+- `state+0x05`: polarity flag; when set, each subsequent data bit is inverted.
+- `state+0x08`: 26-bit codeword shift register.
+- `state+0x0C`: current codeword bit count.
+- `state+0x0D`: decoded 16-bit word count in the current application frame.
+- `state+0x0E`: expected 16-bit word count, derived from the frame header after
+  the first decoded word.
+- `state+0x0F`: decoded byte position in the frame buffer.
+- `state+0x11`: frame byte buffer.
+
+The helper at code offset `0x164` is a 32-bit population count (SWAR) using
+literal masks `0x55555555`, `0x33333333`, `0x0F0F0F0F`, and
+`0x01010101`. The synchronizer computes four Hamming distances per input bit:
+
+1. `popcount(0x0DD4259F ^ (rolling & 0x7FFFFFFF))`
+2. `popcount(0x722BDA60 ^ (rolling & 0x7FFFFFFF))`
+3. `popcount(0x0DD4259F ^ rolling)`
+4. `popcount(0xF22BDA60 ^ rolling)`
+
+These are normal and inverted sync candidates over the 31-bit and 32-bit
+windows. The target retains the minimum distance (preserving first-match tie
+order) and acquires sync when it is **2 or fewer bit errors**. The inverse
+candidate sets the polarity flag.
+
+After lock, bits are optionally inverted and appended MSB-first. Each group of
+26 bits is passed to the BCH(26,16) decoder at `0x484`; its 16 data bits are
+written high byte first, then low byte, into the frame buffer. The word
+collector remains synchronized between codewords. The recovered host module
+`tdcsrx_recovered_stream.c/.h` reproduces sync acquisition and codeword
+collection independently of the not-yet-ported sample discriminator.
+
+This module does not yet reproduce the complete application-frame word-count
+and callback lifecycle. In particular, the handoff at the final parser call and
+reset behavior after a malformed/complete application frame still require
+cross-checking; do not treat this stream layer alone as the whole radio decoder.
+
 ## Recovered application frame
 
 The original parser at code offset `0x61C` requires a 45-byte frame. Its
