@@ -114,6 +114,7 @@ static void tdcs_radio_queue_completed(void)
 
 bool TDCS_RadioInit(const TDCS_RadioOps *ops)
 {
+    uint16_t interrupt_mask;
     if (ops == NULL ||
         ops->read_register == NULL ||
         ops->write_register == NULL) {
@@ -131,8 +132,11 @@ bool TDCS_RadioInit(const TDCS_RadioOps *ops)
     gQueueTail = 0u;
     gQueueCount = 0u;
 
+    /* Retain all existing CSS/squelch/other firmware interrupt enables. */
+    interrupt_mask = tdcs_radio_read(BK_REG_3F);
+    interrupt_mask &= (uint16_t)~TDCS_FFSK_IRQ_MASK;
+    tdcs_radio_write(BK_REG_3F, interrupt_mask);
     tdcs_radio_write(BK_REG_02, 0u);
-    tdcs_radio_write(BK_REG_3F, 0u);
     if (gOps.rx_turn_on != NULL) {
         gOps.rx_turn_on();
     }
@@ -151,7 +155,8 @@ bool TDCS_RadioInit(const TDCS_RadioOps *ops)
                      TDCS_FFSK_CLEAR_FIFO | TDCS_FFSK_PREAMBLE_7_SYNC4);
     tdcs_radio_write(BK_REG_59, TDCS_FFSK_RX_ENABLE);
     tdcs_radio_write(BK_REG_02, 0u);
-    tdcs_radio_write(BK_REG_3F, TDCS_FFSK_IRQ_MASK);
+    tdcs_radio_write(BK_REG_3F,
+                     (uint16_t)(interrupt_mask | TDCS_FFSK_IRQ_MASK));
 
     return true;
 }
