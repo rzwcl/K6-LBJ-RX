@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Main-loop integration tests use real 450-TAx2 payload samples. */
 #define TEST_PACKET_BYTES TDCS_RADIO_PACKET_BYTES
 #define TEST_FRAME_BITS (23u * 26u)
 
