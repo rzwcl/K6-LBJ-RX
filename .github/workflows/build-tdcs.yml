@@ -14,7 +14,7 @@ on:
       - ".github/workflows/build-tdcs.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-tdcs:
@@ -134,3 +134,34 @@ jobs:
             upstream/LOSEHU*.bin
             baseline-firmware-report.json
             upstream/tdcs-build-report.json
+
+      - name: Publish TDCS firmware into CA folder
+        env:
+          PUBLISH_BRANCH: feature/k6-overlay-apps
+        run: |
+          set -euo pipefail
+          source_bin="$(find upstream -maxdepth 1 -type f -name 'LOSEHU*.bin' -print -quit)"
+          test -n "$source_bin"
+          worktree="$RUNNER_TEMP/ca-publish"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "+refs/heads/${PUBLISH_BRANCH}:refs/remotes/origin/${PUBLISH_BRANCH}"
+            git worktree add --detach "$worktree" "origin/${PUBLISH_BRANCH}"
+            mkdir -p "$worktree/CA/Firmware"
+            cp "$source_bin" "$worktree/CA/Firmware/K6-TDCS-RX-LOSEHU132K.bin"
+            git -C "$worktree" add "CA/Firmware/K6-TDCS-RX-LOSEHU132K.bin"
+            if git -C "$worktree" diff --cached --quiet; then
+              echo "Published firmware is already current."
+              git worktree remove --force "$worktree"
+              exit 0
+            fi
+            git -C "$worktree" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "build: update K6 TDCSRX firmware in CA"
+            if git -C "$worktree" push origin "HEAD:refs/heads/${PUBLISH_BRANCH}"; then
+              git worktree remove --force "$worktree"
+              exit 0
+            fi
+            git worktree remove --force "$worktree"
+            sleep 2
+          done
+          echo "Could not publish firmware to ${PUBLISH_BRANCH} after 5 attempts." >&2
+          exit 1
+
