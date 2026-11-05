@@ -5,6 +5,76 @@
 
 #define K6_APP_IO_CHUNK 64u
 
+static K6_AppHostServices g_k6_app_host;
+static K6_AppSlotInfo g_k6_app_active_slot;
+static bool g_k6_app_api_active;
+
+static bool K6APP_APIReadAsset(uint32_t offset,
+                               void *destination,
+                               uint16_t length)
+{
+    if (!g_k6_app_api_active)
+        return false;
+
+    return K6APP_ReadAsset(g_k6_app_host.eeprom_read,
+                           &g_k6_app_active_slot,
+                           offset,
+                           destination,
+                           length);
+}
+
+bool K6APP_BuildAPI(const K6_AppHostServices *host,
+                    const K6_AppSlotInfo *slot,
+                    K6_AppAPI *api)
+{
+    if (host == NULL || slot == NULL || api == NULL ||
+        host->eeprom_read == NULL ||
+        host->display_clear == NULL ||
+        host->print_line == NULL ||
+        host->display_refresh == NULL ||
+        host->backlight_on == NULL ||
+        host->key_get_event == NULL ||
+        host->millis == NULL ||
+        host->delay_ms == NULL ||
+        !K6APP_HeaderBasicValid(&slot->header))
+        return false;
+
+    g_k6_app_host = *host;
+    g_k6_app_active_slot = *slot;
+    g_k6_app_api_active = true;
+
+    memset(api, 0, sizeof(*api));
+    api->abi_major = K6_APP_ABI_MAJOR;
+    api->api_level = K6_APP_API_LEVEL;
+    api->struct_size = (uint16_t)sizeof(*api);
+
+    api->display_clear = host->display_clear;
+    api->print_line = host->print_line;
+    api->display_refresh = host->display_refresh;
+    api->backlight_on = host->backlight_on;
+
+    api->key_get_event = host->key_get_event;
+    api->millis = host->millis;
+    api->delay_ms = host->delay_ms;
+
+    api->rx_configure = host->rx_configure;
+    api->rx_fifo_read = host->rx_fifo_read;
+    api->rx_read_rssi = host->rx_read_rssi;
+    api->rx_restore = host->rx_restore;
+
+    api->asset_size = slot->header.asset_size;
+    api->asset_read = K6APP_APIReadAsset;
+    return true;
+}
+
+void K6APP_ClearAPI(void)
+{
+    g_k6_app_api_active = false;
+    memset(&g_k6_app_host, 0, sizeof(g_k6_app_host));
+    memset(&g_k6_app_active_slot, 0, sizeof(g_k6_app_active_slot));
+}
+
+
 static bool K6APP_HeaderBasicValid(const K6_AppHeader *h)
 {
     const uint64_t ram_total = (uint64_t)h->image_size + (uint64_t)h->bss_size;
