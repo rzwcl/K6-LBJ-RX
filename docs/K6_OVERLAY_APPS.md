@@ -69,7 +69,26 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 
 8 个槽位分别检查，全部 8,192 B 为 `0xFF`，非擦除字节均为 0。由此可以把 `0x2A400–0x3A400` 确认为这份备份里的连续擦除区，并在 K6 APP 设计中正式预留为 8 个独立 APP 槽位；候选区与拼音表、SI4732 数据及多固件目录没有字节范围重叠。
 
-只读报告由 Actions run 42026914782 生成，artifact `K6-EEPROM-backup-read-only-report`。**当前仍未向 EEPROM 写入任何内容**。正式启用安装器前，还要完成 I²C EEPROM 页写入边界/等待时间验证、安装中断恢复和读回校验；同时保留这份原始备份作为恢复基准。
+只读报告由 Actions run 42026914782 生成，artifact `K6-EEPROM-backup-read-only-report`。**当前仍未向 EEPROM 写入任何内容**。正式接入硬件安装器前，仍要完成 I²C 读写回调的实机验证和安装中断恢复测试；同时保留这份原始备份作为恢复基准。
+
+### K5Web BL 槽位界面参考
+
+用户指定参考页面：`https://k5.vicicode.cn/#/tool/bl`。已检查其开源实现 `silenty4ng/k5web/src/views/list/bl/index.vue`，界面与存储模型如下：
+
+- 使用 64 B 为一个可视化 block，把 EEPROM `0x40000–0x80000` 显示为 4,096 个 block。
+- 前 256 个 block（`0x40000–0x44000`，16 KiB）显示为 Bootloader 保留区；后续区域由用户把固件卡片拖放到起始 block，按固件长度连续占用 block。
+- 固件文件按 64 B 对齐填充 `0xFF`；界面用不同颜色显示每个固件占用的 block，并显示固件名称。固件数量、版本和每个固件的起止地址写入 `0x40000` 附近的目录元数据。
+- 写入流程逐 64 B 写入并立即读回比较；写入失败会重试该 block。
+
+**一个容易忽略的区别：** 当前 K5Web 这份源码里的 `readConfig()` 是空函数，页面启动时仅把前 256 个 block 标成 Bootloader 保留，其余 block 全部初始化为空。因此它主要展示用户在网页上编排的“待写入布局”，不能据此认为页面已从电台自动读取并还原当前真实固件占用情况。Losehu Bootloader 文档也明确说明了其固件目录和 EEPROM 区域分工。实际依据见 [K5Web BL 页面源码](https://github.com/silenty4ng/k5web/blob/master/src/views/list/bl/index.vue) 与 [多固件 Bootloader 的 EEPROM 说明](https://github.com/losehu/uv-k5-bootloader-custom/wiki/10-%E2%80%90-Basic-idea-and-operation)。
+
+**K6 APP 管理器借鉴交互，不照搬固件目录和地址：**
+
+- 仍然保留 8 个固定 APP 槽位，每槽 8 KiB；不把 APP 放入 `0x40000–0x80000` 的多固件目录/镜像区。
+- 页面采用 8 张可拖动 APP 卡片和 8 个固定槽位格；可拖动 LBJRX/TDCSRX 卡片到指定槽位，也可以调整槽位顺序。
+- 每槽显示：槽号、APP 名称/版本、代码长度、资源长度、占用比例、CRC 校验状态；空槽明确显示“空闲”，损坏或未提交的槽显示“无效”，不能伪装成空槽。
+- 顶部汇总空闲槽数、已用容量和总容量；提供从电台读取真实槽位、选择 `.k6app` 文件、安装、验证、卸载和读回备份操作。
+- 与 K5Web 现有页面不同，K6 APP 管理器必须先通过只读 EEPROM 协议扫描 8 个 K6A1 头部，逐槽读取并验证代码/资源 CRC，再显示“当前设备状态”。拖动只改变待执行的槽位布局；安装时先写目标槽、读回验证、最后提交头部，验证完成后才清理旧槽。不得只显示浏览器本地的预设布局。
 
 ### SRAM
 
@@ -130,7 +149,7 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 
 - `FirmwareOverlay/apps/k6_app_runtime.c` 已实现槽位头读取、镜像/资源 CRC 校验、代码复制、BSS 清零、资源读取、槽位信息复核、Thumb 入口地址计算，以及单 APP API 服务绑定。
 - `tests/test_k6_app_runtime.c` 用模拟 EEPROM 测试上述逻辑；它不是 DP32G030 上的硬件测试。
-- `K6_APP_EEPROM_BASE=0x2A400` 仍是标准布局推导出的候选地址。**未读取目标机完整 EEPROM 并确认之前，不能把此地址用于实际写入**。
+- `K6_APP_EEPROM_BASE=0x2A400` 已由用户提供的完整 512 KiB EEPROM 备份逐字节确认：8 个槽位全部为 `0xFF`，可以作为 K6 APP 的规划区；但硬件写入仍须经过页边界、写入等待、读回校验和断电恢复测试。
 - 尚未将 `K6APP_Load()`、`K6APP_BuildAPI()` 接入 LOSEHU 主循环、显示/按键调度或 BK4819 驱动。当前探针由 CI 编译和打包，不是可直接安装的 APP。
 
 现有 FirmwareOverlay/app/lbj_app.c、lbj_core.c、lbj_pocsag.c、lbj_radio.c 和 FirmwareOverlay/ui/lbj.c 是静态链接进整套 LBJ 固件的模块。
@@ -140,7 +159,7 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 2. 定义精简的 K6 APP API。第一版头文件和探针已经新增：FirmwareOverlay/apps/k6_app_api.h、app_probe.c、k6_app.ld；当前 API 提供显示、按键、时间、只读接收配置/FIFO/RSSI、射频恢复和 EEPROM 资源读取接口；不提供任意 BK4819 寄存器写入，也不提供发射 API。
 3. 在主菜单增加独立 Apps 入口；后续可以增加用户自选快捷键，但默认不占用 F+7、F+0 等现有组合。
 4. 把 LBJ 解析/显示代码拆成真正独立的 K6 APP，完成独立 ARM 链接并确认总 RAM 不超过 overlay 配额。
-5. 增加 APP 安装器；优先复用 LOSEHU 0.13.2 已有的串口 EEPROM 命令：0x0514 建立会话，0x052B/0x051C 读 EEPROM，0x0538/0x051E 写 EEPROM。0x073x 是 F4HWN 外置 SPI Flash APP 命令，不可用在这个 K6 方案。安装器需先导出并校验目标机 EEPROM 备份，确认 0x2A400–0x3A400 空闲，再写 APP 数据；先写未提交头/数据，最后单独写 committed 标志。
+5. APP 镜像安装核心已实现：`K6APP_Install()` 拒绝覆盖非空槽，按 128 B EEPROM 页边界拆分写入，先写未提交头，再写代码/资源，逐块读回并验证 CRC，最后单独提交有效头；`K6APP_VerifySlot()` 可复核槽位。主机模拟测试已覆盖安装、断电中断保持未提交、已占用槽拒绝覆盖。尚未把该核心连接到实际 K6 串口安装器；协议参考 K5Web/LOSEHU：扩展协议 `0x052B/0x051C` 读、`0x0538/0x051E` 写，`0x073x` 是 F4HWN 外置 SPI Flash APP 命令，不用于本 K6 EEPROM 方案。
 6. 研究 TDCSRX 协议/二进制并实现第二个 K6 APP。当前只确认拿到了上游 TDCSRX APP 二进制，尚未确认其 C 源码。
 
 ## 上游 ENABLE_OVERLAY 的含义
