@@ -52,6 +52,58 @@ static void make_image(uint8_t slot, uint16_t flags)
            g_assets, sizeof(g_assets));
 }
 
+static void stub_display_clear(void) {}
+static void stub_print_line(const char *text, uint8_t line)
+{
+    (void)text;
+    (void)line;
+}
+static void stub_display_refresh(void) {}
+static void stub_backlight_on(void) {}
+static uint8_t stub_key_get_event(void) { return K6_APP_KEY_INVALID; }
+static uint32_t stub_millis(void) { return 0u; }
+static void stub_delay_ms(uint32_t ms) { (void)ms; }
+
+static int test_build_api_asset_binding(void)
+{
+    K6_AppSlotInfo info;
+    K6_AppHostServices host;
+    K6_AppAPI api;
+    uint8_t resource[12];
+
+    if (!K6APP_ReadSlotInfo(mock_read, 0u, &info))
+        return 1;
+
+    memset(&host, 0, sizeof(host));
+    host.eeprom_read = mock_read;
+    host.display_clear = stub_display_clear;
+    host.print_line = stub_print_line;
+    host.display_refresh = stub_display_refresh;
+    host.backlight_on = stub_backlight_on;
+    host.key_get_event = stub_key_get_event;
+    host.millis = stub_millis;
+    host.delay_ms = stub_delay_ms;
+
+    if (!K6APP_BuildAPI(&host, &info, &api))
+        return 2;
+    if (api.abi_major != K6_APP_ABI_MAJOR ||
+        api.api_level != K6_APP_API_LEVEL ||
+        api.struct_size != sizeof(api) ||
+        api.asset_size != TEST_ASSET_SIZE)
+        return 3;
+
+    memset(resource, 0, sizeof(resource));
+    if (!api.asset_read(0u, resource, sizeof(resource)))
+        return 4;
+    if (memcmp(resource, g_assets, sizeof(resource)) != 0)
+        return 5;
+
+    K6APP_ClearAPI();
+    if (api.asset_read(0u, resource, sizeof(resource)))
+        return 6;
+    return 0;
+}
+
 static int test_load_and_read_asset(void)
 {
     K6_AppSlotInfo info;
@@ -206,6 +258,7 @@ int main(void)
 } while (0)
 
     RUN_TEST(test_load_and_read_asset);
+    RUN_TEST(test_build_api_asset_binding);
     RUN_TEST(test_refresh_and_entry);
     RUN_TEST(test_reject_uncommitted);
     RUN_TEST(test_reject_code_crc);
