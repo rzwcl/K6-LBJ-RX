@@ -41,7 +41,11 @@ cc -std=c11 -Wall -Wextra -Werror -pedantic -O2 \
 
 ## K6 项目接续规则
 
-此目录属于研究资料，不是 `FirmwareOverlay`。不要把早期 `k6-full-firmware` 分支中 `TDCS_PAYLOAD_SIZE=40` 的实验代码直接并入 `main`：该负载长度与这里从 TDCSRX 0.3 帧解析器恢复出的 32 字节负载不一致。先完成原始接收链 DSP/组帧逆向，再针对 K6 的 DP32G030 + BK4819 改写驱动与 UI。
+此目录属于研究资料，不是 `FirmwareOverlay`。早期 `k6-full-firmware` 分支中的 40 字节实际上是应用帧的 `frame[3..42]`，即 8 字节地址/控制头加 32 字节 TDCS 业务负载；旧代码把帧体缓存命名成 `TDCS_PAYLOAD_SIZE=40`，命名不准确，但不能据此判断业务字段偏移错误。
+
+修正后的独立 K6 固件位于 `k6-tdcsrx-firmware` 分支（构建记录：[Build K6 TDCS RX #42094883423](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42094883423)）。当前实现将 `TDCS_FRAME_BODY_SIZE=40` 与 `TDCS_DATA_SIZE=32` 分开，检查原版 45 字节应用帧的 `[7..9]` 两种头字段、`[10]==0x20`，并按 `[0..42]` 计算 CRC-16/XMODEM；第 46 个 BCH 解码字节位于应用帧之外，不参与 CRC，也不要求为零。
+
+后续若继续修改 K6 版本，应保持“40 字节帧体缓存”和“32 字节 TDCS 业务负载”的区别。此目录中的反向恢复代码仍是原始 FAP1 机器码的部分重建，不是原作者完整 C 源码；音频 DSP 定点细节和完整 UI/设置逻辑仍需单独恢复。
 
 ## 同步与码字收集
 
