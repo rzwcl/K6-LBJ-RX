@@ -6,7 +6,7 @@
 
 目标设备：老款泉盛 K6，DP32G030 + BK4819。底座按 `losehu/uv-k5-firmware-custom` 的老款 K5/K6 源码接口编写。
 
-**这版已经加入 BK4819 直 FSK 1200 配置、FIFO 中断读取，以及到 POCSAG 位流解码器的连接；但它仍是“待射频实测的集成候选版”，不是已验证可刷写固件。** 主机测试和 Cortex-M0 overlay 对象编译通过；当前环境没有完整 LOSEHU 本地源树和 `arm-none-eabi-gcc`，因此没有完成 LOSEHU 全工程链接，也没有生成最终 `firmware.bin`。
+**这版已经完成作者 LOSEHU 0.13.2 源码树上的完整 ARM GCC 编译和链接，生成了 `LOSEHU132K.bin`。** 当前仍是“待 K6 射频/按键实测的集成候选版”，不是已验证可刷写固件。构建占用 FLASH 53,908/61,440 bytes、RAM 5,128/16,384 bytes；CRC 校验通过。
 
 ## 屏幕布局
 
@@ -120,12 +120,11 @@ ARM EABI overlay objects: PASS (7 .o files; Clang 17)
 python .\tools\install_overlay.py D:\work\uv-k5-firmware-custom-LBJ --dry-run
 python .\tools\install_overlay.py D:\work\uv-k5-firmware-custom-LBJ
 Set-Location D:\work\uv-k5-firmware-custom-LBJ
-make clean
-make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0
+make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0 ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=0 ENABLE_4732=0 ENABLE_4732SSB=0 ENABLE_SPECTRUM=0 ENABLE_DOPPLER=0 ENABLE_FMRADIO=0
 (Get-Item .\firmware.bin).Length
 ```
 
-`make build` 只构建，不写电台；不要用 `make all` 或 `make flash`。LBJ 模式会关闭 UART（避免串口设置命令写 EEPROM）、VOX、DTMF 呼叫、自定义发送侧键、报警和 1750 Hz 发射，并在 `RADIO_PrepareTX`、`RADIO_PrepareCssTX`、`RADIO_SetTxParameters` 入口增加硬性 TX 返回保护。构建脚本会拒绝同时开启 Messenger、MDC1200 或 Aircopy，因为它们会争用 BK4819 FSK FIFO。`ENABLE_LBJ` 默认是 0，未指定时原固件编译路径保持关闭。
+`make build` 只构建，不写电台；不要用 `make all` 或 `make flash`。LBJ 模式关闭 UART 初始化和串口命令解析；仅把 driver/uart.o 链入以满足菜单对象中的 UART_Send 符号引用，不启动串口接收或 EEPROM 串口配置、VOX、DTMF 呼叫、自定义发送侧键、报警和 1750 Hz 发射，并在 `RADIO_PrepareTX`、`RADIO_PrepareCssTX`、`RADIO_SetTxParameters` 入口增加硬性 TX 返回保护。构建脚本会拒绝同时开启 Messenger、MDC1200 或 Aircopy，因为它们会争用 BK4819 FSK FIFO。`ENABLE_LBJ` 默认是 0，未指定时原固件编译路径保持关闭。
 
 `82123750` 是 LOSEHU 的 10 Hz 频率单位，对应 821.2375 MHz；安装代码将接收指针强制指回 RX 频率结构，只改 RAM，不保存频道或 EEPROM。最终 `firmware.bin` 大小必须低于现有多系统引导器单槽 60 KiB 限制，当前还没有实际链接结果，所以不能假定它能放入槽位。
 
@@ -133,13 +132,13 @@ make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0
 
 1. **BK4819 直 FSK 1200 FIFO 适配已接入源码。** `lbj_radio.c` 配置 `REG_58=0x00C1`（直 FSK 1.2K，不是 FFSK 1200/1800），设置 `0x7CD215D8` 同步字，并按 4 个 FIFO words 排空 `REG_5F`；正常/反相极性都会进入软件解码器。
 2. 数据字段设置为 2048 字节（`REG_5D=0xFFE0`），在 1200 bit/s 下约为 13.65 秒。首次同步由硬件识别，后续 POCSAG batch sync 留在数据流中交给 MCU 解析。该长接收窗口的跨报文行为、前导码检测和数据字节方向仍需实机/信号源验证。
-3. **Cortex-M0 ARM EABI overlay 对象已使用 Clang 17 编译成功**，但这只是 LBJ 的 7 个独立 `.o` 文件，使用本包接口 stub，不等于完整 LOSEHU 链接。
-4. 当前执行环境没有 `arm-none-eabi-gcc` / `arm-none-eabi-objcopy`，也没有完整 LOSEHU 本地源码树，因此没有最终 `firmware.bin`、没有测得实际 image 大小；多系统加载器每槽 60 KiB 的限制还未核验。
+3. **作者 LOSEHU 0.13.2 完整工程 ARM GCC 编译和链接通过**，GitHub Actions run 41962240610 已生成 firmware ELF、raw BIN、packed BIN 和 firmware.map。
+4. 最终 raw `firmware.bin` 为 53,908 bytes，packed `LOSEHU132K.bin` 为 53,926 bytes；FLASH 53,908/61,440 bytes，RAM 5,128/16,384 bytes；CRC-16/XMODEM `0x9DF8` 通过，距离 60 KiB 上限还剩 7,532 bytes。
 5. 没有 K6 实机 RF 测试、接收灵敏度测试、屏幕测试或多系统槽位安装测试。必须先验证 POCSAG 同步、位序、正常/反相、完整报文和 2048 字节窗口后的重新捕获。
 6. 频率写入值已按 LOSEHU 的 10 Hz 单位修正为 `82123750`（即 821.2375 MHz），并显式把 RX 指针设回 `freq_config_RX`；频率只改运行时 RAM，不保存到频道或 EEPROM。
 7. 没有修改引导器、EEPROM 槽位元数据、日常 LOSEHU 固件，也没有写入电台。LBJ 构建会关闭串口写 EEPROM 的入口，但设备原有固件/bootloader 的存储行为仍需另行保持不动。
 
-**当前包是已通过代码/对象级编译的 RF 集成候选版，不是可直接刷入的最终固件。** 完成顺序仍是：在你的 LOSEHU 源树运行安装脚本 → 用完整 ARM 工具链链接 → 核查 `.bin` 不超过 60 KiB → 用信号源/已知录音验证 RF FIFO 和 POCSAG → 再决定是否写入独立槽位。
+**当前包已通过完整 LOSEHU 编译、链接和 60 KiB 容量核验，但尚未通过 K6 实机 RF/no-TX/多系统槽位测试，因此仍不能直接刷入。** 下一步是先完成 TX 路径审计与硬件 no-TX 检查，再用信号源/已知录音验证 RF FIFO 和 POCSAG，最后才考虑独立备用槽位。
 
 ## 参考源码
 
