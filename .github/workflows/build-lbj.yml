@@ -36,6 +36,9 @@ jobs:
             --packer upstream/fw-pack.py \
             --report baseline-firmware-report.json
 
+      - name: Test K6 APP image container
+        run: python3 -m unittest discover -s tests -p 'test_k6_app_image.py' -v
+
       - name: Validate overlay integration anchors
         run: python3 tools/install_overlay.py upstream --dry-run
 
