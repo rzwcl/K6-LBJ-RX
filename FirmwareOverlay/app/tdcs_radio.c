@@ -112,34 +112,19 @@ static void tdcs_radio_queue_completed(void)
     ++gStats.received_frames;
 }
 
-bool TDCS_RadioInit(const TDCS_RadioOps *ops)
+static bool tdcs_radio_configure_modem(void)
 {
     uint16_t interrupt_mask;
-    if (ops == NULL ||
-        ops->read_register == NULL ||
-        ops->write_register == NULL) {
+
+    if (!tdcs_radio_ready()) {
         return false;
     }
-
-    gOps = *ops;
-    memset(&gStats, 0, sizeof(gStats));
-    memset(gRxPacket, 0, sizeof(gRxPacket));
-    memset(gQueue, 0, sizeof(gQueue));
-    gRxBytes = 0u;
-    gRxActive = 0u;
-    gRxInverted = 0u;
-    gQueueHead = 0u;
-    gQueueTail = 0u;
-    gQueueCount = 0u;
 
     /* Retain all existing CSS/squelch/other firmware interrupt enables. */
     interrupt_mask = tdcs_radio_read(BK_REG_3F);
     interrupt_mask &= (uint16_t)~TDCS_FFSK_IRQ_MASK;
     tdcs_radio_write(BK_REG_3F, interrupt_mask);
     tdcs_radio_write(BK_REG_02, 0u);
-    if (gOps.rx_turn_on != NULL) {
-        gOps.rx_turn_on();
-    }
 
     /* BK4819 native FFSK 1200/1800 Hz receive modem. */
     tdcs_radio_write(BK_REG_58, TDCS_FFSK_MODE_1200_1800_RX);
@@ -159,6 +144,36 @@ bool TDCS_RadioInit(const TDCS_RadioOps *ops)
                      (uint16_t)(interrupt_mask | TDCS_FFSK_IRQ_MASK));
 
     return true;
+}
+
+bool TDCS_RadioInit(const TDCS_RadioOps *ops)
+{
+    if (ops == NULL ||
+        ops->read_register == NULL ||
+        ops->write_register == NULL) {
+        return false;
+    }
+
+    gOps = *ops;
+    memset(&gStats, 0, sizeof(gStats));
+    memset(gRxPacket, 0, sizeof(gRxPacket));
+    memset(gQueue, 0, sizeof(gQueue));
+    gRxBytes = 0u;
+    gRxActive = 0u;
+    gRxInverted = 0u;
+    gQueueHead = 0u;
+    gQueueTail = 0u;
+    gQueueCount = 0u;
+
+    if (gOps.rx_turn_on != NULL) {
+        gOps.rx_turn_on();
+    }
+    return tdcs_radio_configure_modem();
+}
+
+bool TDCS_RadioReconfigure(void)
+{
+    return tdcs_radio_configure_modem();
 }
 
 void TDCS_RadioHandleInterrupt(uint16_t interrupt_bits)
