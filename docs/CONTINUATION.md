@@ -55,7 +55,7 @@
 - `docs/UPSTREAM_BASE.md`：上游 tag、commit、HS 配置含义、版本对应分析和构建方向。
 - `.github/workflows/build-lbj.yml`：从固定 0.13.2 tag 拉取作者源码，在临时副本应用 overlay，使用 ARM GCC 做完整链接，并检查原始 BIN 不超过 60 KiB、打包长度等于 raw+18。产物只作为 Actions artifact，不把二进制混入源码提交。
 
-LBJ 专用镜像首轮构建配置：保留 `ENABLE_CHINESE_FULL=4`，关闭拼音、SI4732、MDC1200、Messenger、Aircopy、Spectrum、Doppler 和 FM Radio。它是独立接收系统，不要求保留当前 132HS 的所有附加功能。构建失败或超出 flash 时，根据链接 map 进一步裁剪；不能直接刷写。
+LBJ 专用镜像已用该配置完整编译链接：保留 `ENABLE_CHINESE_FULL=4`，关闭拼音、SI4732、MDC1200、Messenger、Aircopy、Spectrum、Doppler 和 FM Radio。输出后缀为 `LOSEHU132K`；FLASH 53,908 bytes，RAM 5,128 bytes。它是独立接收系统，不要求保留当前 132HS 的所有附加功能。
 
 ## 当前完整构建状态
 
@@ -77,15 +77,18 @@ LBJ 专用镜像首轮构建配置：保留 `ENABLE_CHINESE_FULL=4`，关闭拼�
 
 编译器报告和打包报告见 docs/VERIFICATION.txt。完整 map、ELF、raw BIN、packed BIN 和 JSON 报告均在 Actions artifact 中。
 
-## 已有验证（不要扩大解释）
+## 已有验证
 
-仓库中的 `docs/VERIFICATION.txt` 记录：
 - 主机端 POCSAG、业务解析、应用逻辑、BK4819 FIFO mock 测试通过。
-- overlay C 语法检查通过，但使用本仓库 tests/stubs。
+- overlay C 语法检查通过，但这部分使用本仓库 tests/stubs。
 - Clang 17 为 7 个 LBJ overlay translation units 生成 ARM Cortex-M0/Thumb 对象文件。
-- 安装脚本在 synthetic LOSEHU-shaped tree 上完成 dry-run、安装和幂等性测试。
+- 作者 LOSEHU 0.13.2 真实源码树：dry-run、overlay 安装、二次 dry-run 幂等性检查通过。
+- ARM GCC 10.3.1 完整编译、链接通过；生成 firmware ELF、raw firmware.bin、packed LOSEHU132K.bin 和 firmware.map。
+- 链接器报告 FLASH 53,908/61,440 bytes、RAM 5,128/16,384 bytes。
+- 打包输出 CRC-16/XMODEM 0x9DF8 验证通过；初始 MSP/复位向量落在预期地址范围。
+- 构建产物保存在 Actions artifact；不是实机测试结果。
 
-这些不等于完整固件成功链接。对象编译使用 `build-arm-includes/` 和 `tests/stubs/`，不能代替生产 LOSEHU 头文件及完整链接。
+完整验证数据见 docs/VERIFICATION.txt。
 
 ## 仍缺少的内容
 
