@@ -24,7 +24,7 @@ jobs:
       - name: Install ARM GCC and Python packer dependency
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi python3-crcmod
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi python3-crcmod
 
       - name: Fetch pinned upstream LOSEHU source
         run: |
