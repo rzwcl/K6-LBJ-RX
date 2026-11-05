@@ -190,13 +190,7 @@ bool K6APP_Load(K6_AppEEPROMRead read_eeprom,
     return true;
 
 fail:
-    memset(overlay, 0, (size_t)image_offset);
-    if (info->header.bss_size <= overlay_capacity -
-                                 ((image_offset <= overlay_capacity) ? image_offset : overlay_capacity)) {
-        memset(overlay + ((image_offset <= overlay_capacity) ? image_offset : overlay_capacity),
-               0,
-               (size_t)(overlay_capacity -
-                        ((image_offset <= overlay_capacity) ? image_offset : overlay_capacity)));
-    }
+    memset(overlay, 0,
+           (size_t)(info->header.image_size + info->header.bss_size));
     return false;
 }
