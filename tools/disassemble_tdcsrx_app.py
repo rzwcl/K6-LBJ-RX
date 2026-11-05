@@ -57,7 +57,8 @@ def load_app(data: bytes):
 
 def disassemble(code: bytes, vma: int):
     from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS, CS_GRP_CALL, CS_OP_IMM
-    from capstone import CS_OP_MEM, CS_REG_PC
+    from capstone import CS_OP_MEM
+    from capstone.arm_const import ARM_REG_PC
     engine = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
     engine.detail = True
     instructions = list(engine.disasm(code, vma))
@@ -72,7 +73,7 @@ def disassemble(code: bytes, vma: int):
             calls.setdefault(target - vma, []).append(offset)
         if insn.mnemonic == "ldr" and len(insn.operands) >= 2:
             mem = insn.operands[1]
-            if mem.type == CS_OP_MEM and mem.mem.base == CS_REG_PC:
+            if mem.type == CS_OP_MEM and mem.mem.base == ARM_REG_PC:
                 literal_addr = ((insn.address + 4) & ~3) + mem.mem.disp
                 literal_off = literal_addr - vma
                 if 0 <= literal_off <= len(code) - 4:
