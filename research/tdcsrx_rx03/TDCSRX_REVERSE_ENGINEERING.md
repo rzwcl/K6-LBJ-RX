@@ -57,6 +57,44 @@ The receiver uses a rolling 32-bit sync register. The sync constant is
 26-bit words are collected MSB-first and converted into 16-bit data words.
 The application frame is assembled from those decoded 16-bit words.
 
+## Audio sample path and dual-tone detector recovered
+
+The entry's receive loop calls the routine at code offset `0x950` from the
+sample-processing loop at `0xD0A`. The loop reads the ADC data register
+`0x40012450`, retains the low 12 bits, and invokes the routine once per
+5,000-cycle deadline at a 48 MHz core clock: 9,600 samples/s.
+
+The routine at code offset `0x950` is not merely an unknown opaque DSP block.
+Its literal tables and phase arithmetic identify a dual-tone quadrature detector:
+
+- The 8-entry signed coefficient table is at code offset `0xE27`:
+  `7F 5A 00 A6 81 A6 00 5A` =
+  `[127, 90, 0, -90, -127, -90, 0, 90]`.
+  The routine advances an 8-state phase once per sample and also indexes
+  `(phase + 6) & 7`, yielding the quadrature component. At 9,600 samples/s,
+  one 8-sample cycle is 1,200 Hz.
+- The 16-entry signed coefficient table is at code offset `0xE2F`:
+  `7F 31 A6 8B 00 75 5A CF 81 CF 5A 75 00 8B A6 31` =
+  `[127, 49, -90, -117, 0, 117, 90, -49, -127, -49, 90, 117, 0, -117, -90, 49]`.
+  This is a 16-phase, third-harmonic cosine table. The routine also indexes
+  `(phase + 4) & 15`, giving its quadrature component. A 16-sample
+  fundamental at 9,600 samples/s is 600 Hz; its third harmonic is 1,800 Hz.
+- The function maintains four signed accumulators in its state object at
+  offsets `+0x14`, `+0x18`, `+0x1C`, and `+0x20`, in addition to the
+  phase counters and sample history. Before the phase detectors it updates a
+  slow DC estimate and subtracts that estimate from the input sample.
+- The downstream path is `0x950` → `0xA80` (bit/word synchronization and
+  collection) → `0x484` (26-bit BCH single-bit correction) → `0x61C`
+  (45-byte application-frame parser). The call at `0xD0A` is the per-sample
+  entry into this chain.
+
+This is strong instruction/table evidence that the app demodulates the 1,200 Hz
+and 1,800 Hz FFSK tones with phase-indexed I/Q detectors before bit slicing.
+It is a static reconstruction, not yet a cycle-accurate C port. The exact
+fixed-point scaling, downstream decision thresholds, both state lanes, and
+resynchronization timing still need to be translated and tested before K6
+integration.
+
 ## Recovered application frame
 
 The original parser at code offset `0x61C` requires a 45-byte frame. Its
@@ -128,27 +166,28 @@ The role strings embedded in the binary are `本务 货`, `本务 客`, `补机 
 `通过`, `预告`, and `容许`. UI status strings include `km/h`, `dB`, `4BL:`,
 `1SPK:`, `ON`, and `OFF`.
 
-## BCH discrepancy that must remain open
+## BCH implementation recovered from the literal pool
 
-The binary's routine at offsets `0x1D4..0x1FC` loads the 32-bit little-endian
-literal `0x0000B905`, iterates bit positions 25 down through 10, xors
-`0xB905 << (position - 10)` when that bit is set, and returns the low 10 bits.
-The routine at `0x204` precomputes syndromes for all 26 single-bit positions
-and corrects the first matching position.
+The BCH routine at code offsets `0x1D4..0x1FC` uses an LDR at `0x1DC`.
+Its PC-relative target is the 32-bit literal at code offset `0x200`, whose
+bytes are `B9 05 00 00`. Interpreted as a little-endian 32-bit word, the actual
+generator polynomial is **`0x000005B9`**, not `0x0000B905`.
 
-When that exact operation is emulated as 32-bit arithmetic, the 26 single-bit
-positions produce only 16 unique low-10-bit syndromes; ten pairs collide. That
-is not a valid unique single-bit syndrome map for a BCH(26,16) code. The
-independent OnAir/railair-terminal-derived implementation uses polynomial
-`0x5B9`, which produces 26 unique syndromes under the same MSB-first division
-convention. It is **not yet proven** whether the TDCSRX binary contains an
-endianness/polynomial bug or whether another unaccounted representation step
-exists. This package exposes both operations separately and does not silently
-replace the target literal.
+The routine shifts the 26-bit codeword through polynomial division from bit 25
+down to bit 10, XORing `0x05B9 << (bit - 10)` when the current high bit is set,
+then keeps the low 10-bit remainder. The correction routine at `0x204`
+precomputes the syndrome for all 26 one-bit masks and finds the matching bit.
+The reconstructed implementation now uses `0x05B9` for the original routine.
 
-Cross-reference: [OnAir railway protocol implementation](https://github.com/adswill/OnAir/blob/main/core/src/railway/railway_proto.cpp)
-and [its protocol notes](https://github.com/adswill/OnAir/blob/main/docs/railway.md).
-Those are independent reference code, not the original F4HWN TDCSRX source.
+A host test now verifies all 26 single-bit syndromes are unique, compares the
+target operation against the independent `0x05B9` reference for deterministic
+test values, and injects each of the 26 possible single-bit errors into several
+valid synthetic BCH(26,16) words. Every injected single-bit error is corrected
+to the original 16-bit data word. This supersedes the earlier BCH discrepancy
+section in the initial recovery notes; that discrepancy was caused by reading
+the first two bytes of the literal pool without decoding the full 32-bit
+little-endian value.
+
 
 ## Remaining reverse-engineering work
 
