@@ -1,0 +1,82 @@
+name: Build K6 LBJ RX
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "FirmwareOverlay/**"
+      - "tools/**"
+      - "docs/**"
+      - ".github/workflows/build-lbj.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-lbj:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout LBJ project
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC and Python packer dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi python3-crcmod
+
+      - name: Fetch pinned upstream LOSEHU source
+        run: |
+          git clone --depth 1 --branch 0.13.2 https://github.com/losehu/uv-k5-firmware-custom.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = "021656ea13226d349e31acd6eb21079c5bab64c7"
+
+      - name: Validate overlay integration anchors
+        run: python3 tools/install_overlay.py upstream --dry-run
+
+      - name: Install LBJ overlay into isolated upstream checkout
+        run: python3 tools/install_overlay.py upstream
+
+      - name: Build Chinese LBJ receiver firmware
+        working-directory: upstream
+        run: |
+          make build \
+            ENABLE_LBJ=1 \
+            ENABLE_MESSENGER=0 \
+            ENABLE_MDC1200=0 \
+            ENABLE_AIRCOPY=0 \
+            ENABLE_CHINESE_FULL=4 \
+            ENABLE_PINYIN=0 \
+            ENABLE_4732=0 \
+            ENABLE_4732SSB=0 \
+            ENABLE_SPECTRUM=0 \
+            ENABLE_DOPPLER=0 \
+            ENABLE_FMRADIO=0
+
+      - name: Verify linked image size and packer output
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          test -s firmware
+          test -s firmware.bin
+          packed="$(find . -maxdepth 1 -type f -name 'LOSEHU*.bin' -print -quit)"
+          test -n "$packed"
+          raw_size="$(stat -c '%s' firmware.bin)"
+          packed_size="$(stat -c '%s' "$packed")"
+          echo "Raw firmware: $raw_size bytes"
+          echo "Packed firmware: $packed_size bytes"
+          arm-none-eabi-size firmware
+          test "$raw_size" -le 61440
+          test "$packed_size" -eq "$((raw_size + 18))"
+          echo "PACKED_IMAGE=$packed" >> "$GITHUB_ENV"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: K6-LBJ-RX-LOSEHU132K
+          if-no-files-found: error
+          path: |
+            upstream/firmware
+            upstream/firmware.bin
+            upstream/firmware.map
+            upstream/LOSEHU*.bin
