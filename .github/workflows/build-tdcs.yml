@@ -1,0 +1,136 @@
+name: Build K6 TDCS RX
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [k6-tdcsrx-firmware]
+    paths:
+      - "FirmwareOverlay/app/tdcs_*.c"
+      - "FirmwareOverlay/app/tdcs_*.h"
+      - "FirmwareOverlay/protocol/tdcs_protocol.*"
+      - "FirmwareOverlay/ui/tdcs.*"
+      - "tests/test_tdcs_*.c"
+      - "tools/install_tdcs_overlay.py"
+      - ".github/workflows/build-tdcs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-tdcs:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout TDCS firmware project
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi python3-crcmod
+
+      - name: Run strict TDCS protocol tests
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -IFirmwareOverlay/protocol \
+            FirmwareOverlay/protocol/tdcs_protocol.c tests/test_tdcs_protocol.c \
+            -o tdcs-protocol-tests
+          ./tdcs-protocol-tests
+
+      - name: Run strict TDCS radio adapter tests
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -IFirmwareOverlay/protocol -IFirmwareOverlay/app \
+            FirmwareOverlay/app/tdcs_radio.c tests/test_tdcs_radio.c \
+            -o tdcs-radio-tests
+          ./tdcs-radio-tests
+
+      - name: Run strict TDCS application tests
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -IFirmwareOverlay/protocol -IFirmwareOverlay/app \
+            FirmwareOverlay/protocol/tdcs_protocol.c \
+            FirmwareOverlay/app/tdcs_radio.c FirmwareOverlay/app/tdcs_app.c \
+            tests/test_tdcs_app.c -o tdcs-app-tests
+          ./tdcs-app-tests
+
+      - name: Fetch pinned upstream LOSEHU source
+        run: |
+          git clone --depth 1 --branch 0.13.2 https://github.com/losehu/uv-k5-firmware-custom.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = "021656ea13226d349e31acd6eb21079c5bab64c7"
+
+      - name: Verify baseline packed image
+        run: |
+          python3 tools/verify_losehu_packed.py "LOSEHU132HS(MDC尾音).bin" \
+            --packer upstream/fw-pack.py \
+            --report baseline-firmware-report.json
+
+      - name: Validate TDCS integration anchors
+        run: python3 tools/install_tdcs_overlay.py upstream --dry-run
+
+      - name: Install TDCS RX overlay
+        run: python3 tools/install_tdcs_overlay.py upstream
+
+      - name: Verify TDCS installer is idempotent
+        run: python3 tools/install_tdcs_overlay.py upstream --dry-run
+
+      - name: Build standalone TDCS RX firmware
+        working-directory: upstream
+        run: |
+          make build \
+            ENABLE_TDCSRX=1 \
+            ENABLE_MESSENGER=0 \
+            ENABLE_MDC1200=0 \
+            ENABLE_AIRCOPY=0 \
+            ENABLE_UART=0 \
+            ENABLE_VOX=0 \
+            ENABLE_ALARM=0 \
+            ENABLE_TX1750=0 \
+            ENABLE_CUSTOM_SIDEFUNCTIONS=0 \
+            ENABLE_SIDEFUNCTIONS_SEND=0 \
+            ENABLE_CHINESE_FULL=4 \
+            ENABLE_PINYIN=0 \
+            ENABLE_4732=0 \
+            ENABLE_4732SSB=0 \
+            ENABLE_SPECTRUM=0 \
+            ENABLE_DOPPLER=0 \
+            ENABLE_FMRADIO=0
+
+      - name: Verify generated packed TDCS firmware
+        working-directory: upstream
+        run: |
+          packed="$(find . -maxdepth 1 -type f -name 'LOSEHU*.bin' -print -quit)"
+          test -n "$packed"
+          python3 ../tools/verify_losehu_packed.py "$packed" \
+            --packer fw-pack.py \
+            --report tdcs-build-report.json
+
+      - name: Verify image size
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          test -s firmware
+          test -s firmware.bin
+          packed="$(find . -maxdepth 1 -type f -name 'LOSEHU*.bin' -print -quit)"
+          test -n "$packed"
+          raw_size="$(stat -c '%s' firmware.bin)"
+          packed_size="$(stat -c '%s' "$packed")"
+          echo "Raw TDCS firmware: $raw_size bytes"
+          echo "Packed TDCS firmware: $packed_size bytes"
+          arm-none-eabi-size firmware
+          test "$raw_size" -le 61440
+          test "$packed_size" -eq "$((raw_size + 18))"
+          echo "PACKED_IMAGE=$packed" >> "$GITHUB_ENV"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: K6-TDCS-RX-LOSEHU132K
+          if-no-files-found: error
+          path: |
+            upstream/firmware
+            upstream/firmware.bin
+            upstream/firmware.map
+            upstream/LOSEHU*.bin
+            baseline-firmware-report.json
+            upstream/tdcs-build-report.json
