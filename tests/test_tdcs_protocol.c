@@ -49,12 +49,6 @@ static void set_bit(
     }
 }
 
-static uint8_t get_info_bit(const uint8_t *info, size_t bit_position)
-{
-    const unsigned int shift = 7u - (unsigned int)(bit_position & 7u);
-    return (uint8_t)((info[bit_position >> 3] >> shift) & 1u);
-}
-
 static void encode_frame(
     const uint8_t payload[TDCS_PAYLOAD_SIZE],
     uint8_t packed[TEST_FRAME_BYTES],
