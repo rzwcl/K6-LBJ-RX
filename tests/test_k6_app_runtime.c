@@ -55,7 +55,7 @@ static void make_package(uint8_t package[TEST_PACKAGE_SIZE])
     header.image_crc32 = K6APP_CRC32(g_code, sizeof(g_code));
     header.entry_offset = 0u;
     header.flags = K6_APP_FLAG_COMMITTED;
-    memcpy(header.name, "INSTALL-TEST", sizeof("INSTALL-TEST"));
+    memcpy(header.name, "INSTALL", sizeof("INSTALL"));
     memcpy(header.version, "1.0", sizeof("1.0"));
     header.link_vma = K6_APP_LINK_VMA;
     header.bss_size = TEST_BSS_SIZE;
