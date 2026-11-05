@@ -84,6 +84,31 @@ static int test_load_and_read_asset(void)
     return 0;
 }
 
+static int test_refresh_and_entry(void)
+{
+    K6_AppSlotInfo cached;
+    K6_AppSlotInfo fresh;
+    uint8_t ram[K6_APP_RAM_SIZE];
+
+    make_image(6u, K6_APP_FLAG_COMMITTED);
+    if (!K6APP_ReadSlotInfo(mock_read, 6u, &cached))
+        return 1;
+    if (!K6APP_RefreshSlotInfo(mock_read, &cached, &fresh))
+        return 2;
+    if (fresh.slot_index != 6u ||
+        fresh.slot_address != cached.slot_address)
+        return 3;
+    if ((uintptr_t)K6APP_GetEntry(&fresh, ram) !=
+        (((uintptr_t)ram) | (uintptr_t)1u))
+        return 4;
+
+    g_eeprom[cached.slot_address + 20u] ^= 0x01u;
+    if (K6APP_RefreshSlotInfo(mock_read, &cached, &fresh))
+        return 5;
+
+    return 0;
+}
+
 static int test_reject_uncommitted(void)
 {
     K6_AppSlotInfo info;
@@ -181,6 +206,7 @@ int main(void)
 } while (0)
 
     RUN_TEST(test_load_and_read_asset);
+    RUN_TEST(test_refresh_and_entry);
     RUN_TEST(test_reject_uncommitted);
     RUN_TEST(test_reject_code_crc);
     RUN_TEST(test_reject_asset_crc);
