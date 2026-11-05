@@ -31,6 +31,12 @@ jobs:
           git clone --depth 1 --branch 0.13.2 https://github.com/losehu/uv-k5-firmware-custom.git upstream
           test "$(git -C upstream rev-parse HEAD)" = "021656ea13226d349e31acd6eb21079c5bab64c7"
 
+      - name: Verify uploaded baseline firmware image
+        run: |
+          python3 tools/verify_losehu_packed.py "LOSEHU132HS(MDC尾音).bin" \
+            --packer upstream/fw-pack.py \
+            --report baseline-firmware-report.json
+
       - name: Validate overlay integration anchors
         run: python3 tools/install_overlay.py upstream --dry-run
 
@@ -52,6 +58,15 @@ jobs:
             ENABLE_SPECTRUM=0 \
             ENABLE_DOPPLER=0 \
             ENABLE_FMRADIO=0
+
+      - name: Verify generated packed firmware
+        working-directory: upstream
+        run: |
+          packed="$(find . -maxdepth 1 -type f -name 'LOSEHU*.bin' -print -quit)"
+          test -n "$packed"
+          python3 ../tools/verify_losehu_packed.py "$packed" \
+            --packer fw-pack.py \
+            --report lbj-build-report.json
 
       - name: Verify linked image size and packer output
         working-directory: upstream
@@ -80,3 +95,5 @@ jobs:
             upstream/firmware.bin
             upstream/firmware.map
             upstream/LOSEHU*.bin
+            baseline-firmware-report.json
+            upstream/lbj-build-report.json
