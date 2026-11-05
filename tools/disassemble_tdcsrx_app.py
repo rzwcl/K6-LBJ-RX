@@ -61,6 +61,12 @@ def disassemble(code: bytes, vma: int):
     from capstone.arm_const import ARM_REG_PC
     engine = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
     engine.detail = True
+    # FAP1 contains literal pools and constants inside the linked code range.
+    # Skip invalid halfwords, rather than terminating at the first pool.
+    def skip_thumb_halfword(_code, _offset, _user_data):
+        return 2
+    engine.skipdata_setup = (".hword", skip_thumb_halfword, None)
+    engine.skipdata = True
     instructions = list(engine.disasm(code, vma))
     lines = []
     calls = {}
@@ -106,7 +112,7 @@ def render_report(metadata, full_disassembly, calls):
         out.append("")
     out += [
         "## Important boundaries", "",
-        "- Disassembly is a linear Thumb sweep. Literal pools and embedded data can be decoded as instructions; verify control-flow before assigning function boundaries.",
+        "- Disassembly is a linear Thumb sweep with invalid halfwords emitted as .hword data. Literal pools and embedded data that happen to decode as valid opcodes can still appear as instructions; verify control-flow before assigning function boundaries.",
         "- Code offsets are relative to the byte immediately after the 64-byte FAP1 header; runtime addresses add link_vma.",
         "- This is the published FAP1 application, not a standalone radio firmware and not original C source.",
         "- The DSP at offset 0x950 still requires semantic reconstruction; this report does not claim that the DSP is understood.",
