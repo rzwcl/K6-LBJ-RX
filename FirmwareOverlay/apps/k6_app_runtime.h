@@ -20,6 +20,11 @@ bool K6APP_ReadSlotInfo(K6_AppEEPROMRead read_eeprom,
                         uint8_t slot_index,
                         K6_AppSlotInfo *info);
 
+/* Verify cached slot identity against the current EEPROM header. */
+bool K6APP_RefreshSlotInfo(K6_AppEEPROMRead read_eeprom,
+                           const K6_AppSlotInfo *cached,
+                           K6_AppSlotInfo *fresh);
+
 /* Verify code + assets, load image to overlay_ram, and clear its BSS. */
 bool K6APP_Load(K6_AppEEPROMRead read_eeprom,
                 const K6_AppSlotInfo *info,
@@ -32,6 +37,9 @@ bool K6APP_ReadAsset(K6_AppEEPROMRead read_eeprom,
                      uint32_t offset,
                      void *destination,
                      uint16_t length);
+
+/* Return the Thumb entry address inside a successfully loaded overlay image. */
+K6_AppEntry K6APP_GetEntry(const K6_AppSlotInfo *info, void *overlay_ram);
 
 uint32_t K6APP_CRC32(const void *data, uint32_t length);
 
