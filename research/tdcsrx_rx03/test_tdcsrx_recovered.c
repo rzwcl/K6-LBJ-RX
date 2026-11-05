@@ -262,6 +262,26 @@ static void test_stream_sync_error_tolerance(void)
     assert(!state.inverted);
 }
 
+
+static void test_stream_sync_31bit_window_variants(void)
+{
+    tdcsrx_stream_state_t state;
+
+    /* The most-significant rolling bit is deliberately different. */
+    tdcsrx_stream_init(&state);
+    feed_sync_word(&state, 0x8dd4259fu, 0u,
+                   TDCSRX_STREAM_SYNC_ACQUIRED);
+    assert(state.synchronized);
+    assert(!state.inverted);
+
+    tdcsrx_stream_init(&state);
+    feed_sync_word(&state, 0x722bda60u, 0u,
+                   TDCSRX_STREAM_SYNC_ACQUIRED);
+    assert(state.synchronized);
+    assert(state.inverted);
+}
+
+
 static void test_stream_rejects_three_sync_errors(void)
 {
     tdcsrx_stream_state_t state;
@@ -289,6 +309,9 @@ int main(void)
     test_stream_sync_and_codeword_inverted();
     test_stream_sync_error_tolerance();
     test_stream_rejects_three_sync_errors();
+    test_stream_sync_31bit_window_variants();
+    puts("Sync acquisition normal/inverted, 31/32-bit windows, 2-bit tolerance and 3-bit rejection: PASS");
+    puts("MSB-first 26-bit collection and BCH decode: PASS");
     test_parse_variant_1f();
     test_parse_variant_ff();
     test_rejections();
