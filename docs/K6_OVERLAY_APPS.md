@@ -1,6 +1,6 @@
 # K6 原生 Overlay APP 移植记录
 
-状态：方案与镜像工具第一阶段；**尚未实现固件侧 APP 加载器，也未进行 K6 实机测试**。
+状态：K6A1 容器、主机模拟 EEPROM 加载器、API 绑定和独立 ARM 探针已完成第一轮测试；**尚未接入主固件、未实现 APP 菜单/实际 EEPROM 写入，也未进行 K6 实机测试**。
 
 ## 目标
 
@@ -111,6 +111,11 @@ LOSEHU 标准 H/HS EEPROM 布局中，拼音索引/汉字表到 0x2A330 结束�
 固定 VMA 的 K6 APP 探针已通过 ARM 编译、链接和封装：代码 236 B、BSS 4 B、总 SRAM 240/6,144 B，带头文件后 300/8,192 B。Actions run 42020338961 只上传 probe report 和 linker map。探针只验证构建/封装路径，不代表 APP 已能在电台上运行。
 
 ## 当前代码状态
+
+- `FirmwareOverlay/apps/k6_app_runtime.c` 已实现槽位头读取、镜像/资源 CRC 校验、代码复制、BSS 清零、资源读取、槽位信息复核、Thumb 入口地址计算，以及单 APP API 服务绑定。
+- `tests/test_k6_app_runtime.c` 用模拟 EEPROM 测试上述逻辑；它不是 DP32G030 上的硬件测试。
+- `K6_APP_EEPROM_BASE=0x2A400` 仍是标准布局推导出的候选地址。**未读取目标机完整 EEPROM 并确认之前，不能把此地址用于实际写入**。
+- 尚未将 `K6APP_Load()`、`K6APP_BuildAPI()` 接入 LOSEHU 主循环、显示/按键调度或 BK4819 驱动。当前探针由 CI 编译和打包，不是可直接安装的 APP。
 
 现有 FirmwareOverlay/app/lbj_app.c、lbj_core.c、lbj_pocsag.c、lbj_radio.c 和 FirmwareOverlay/ui/lbj.c 是静态链接进整套 LBJ 固件的模块。
 
