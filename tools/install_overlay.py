@@ -186,7 +186,7 @@ def main() -> int:
 #endif
 
 #ifdef ENABLE_SHOW_CHARGE_LEVEL""",
-        "#ifdef ENABLE_DTMF_CALLING\\n#if 1\\n            if (gSetting_live_DTMF_decoder",
+        "#ifdef ENABLE_DTMF_CALLING\n#if 1\n            if (gSetting_live_DTMF_decoder",
         "ui/main.c",
     )
 
