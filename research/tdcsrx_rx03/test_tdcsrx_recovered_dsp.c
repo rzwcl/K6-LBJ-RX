@@ -184,6 +184,13 @@ static void test_full_9600_hz_audio_to_frame(void)
            state.receiver.path[1].stream.synchronized,
            state.receiver.path[0].stream.codeword_bit_count,
            state.receiver.path[1].stream.codeword_bit_count);
+    fprintf(stderr, "sync shift=%08lX/%08lX phase=%08lX/%08lX corr=%ld,%ld,%ld,%ld\n",
+            (unsigned long)state.receiver.path[0].stream.sync_shift,
+            (unsigned long)state.receiver.path[1].stream.sync_shift,
+            (unsigned long)state.discriminator[0].phase,
+            (unsigned long)state.discriminator[1].phase,
+            (long)state.corr_1200_i, (long)state.corr_1200_q,
+            (long)state.corr_1800_i, (long)state.corr_1800_q);
     assert(capture.calls >= 1u);
     assert(capture.last_message.train_number == 0u);
     assert(capture.last_message.received_crc ==
