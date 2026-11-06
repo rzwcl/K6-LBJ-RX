@@ -86,8 +86,8 @@ The original `0x0950` sample routine is now translated into
   offsets `0x0E27` and `0x0E2F`, with an 8-sample sliding history.
 - Helper at code offset `0x0198` returns
   `max(abs(I),abs(Q)) + (min(abs(I),abs(Q)) >> 2) + (min(...) >> 3)`.
-  Its baseline rises by `max((magnitude-baseline)>>5, 16)` and falls by
-  `baseline-(baseline>>10)`; the initialized baselines are both 16.
+  Its baseline rises by `(magnitude-baseline)>>5` then clamps to a minimum
+  baseline of 16; it falls by `baseline-(baseline>>10)`; the initialized baselines are both 16.
 - The discriminator compares cross-normalized tone levels:
   `mag1200*smooth1800*weight1200 - mag1800*smooth1200*weight1800`.
   The two weight pairs are 2:3 and 3:2. Each has its own previous-difference

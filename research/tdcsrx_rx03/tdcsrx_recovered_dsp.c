@@ -5,7 +5,7 @@
 
 #define TDCSRX_FILTER_X_COEFF  0x0000140a
 #define TDCSRX_FILTER_Y1_COEFF 0x00003246
-#define TDCSRX_FILTER_Y2_COEFF ((int32_t)0xffffe813u)
+#define TDCSRX_FILTER_Y2_COEFF (-6125)
 
 static const int8_t kTone1200[8] = {
     127, 90, 0, -90, -127, -90, 0, 90
@@ -138,9 +138,7 @@ int32_t tdcsrx_audio_magnitude(int32_t i_value,
     } else {
         const int32_t delta =
             wrap_sub_i32((int32_t)magnitude, previous);
-        int32_t step = arithmetic_shift_right(delta, 5u);
-        if (step < 16)
-            step = 16;
+        const int32_t step = arithmetic_shift_right(delta, 5u);
         next = wrap_add_i32(previous, step);
         if (next < 16)
             next = 16;

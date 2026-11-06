@@ -14,7 +14,7 @@ static void test_magnitude_198(void)
 
     baseline = 16;
     assert(tdcsrx_audio_magnitude(40, 0, &baseline) == 40);
-    assert(baseline == 32); /* (40-16)>>5 = 0 -> minimum step 16 */
+    assert(baseline == 16); /* (40-16)>>5 = 0; lower bound remains 16 */
 
     baseline = 16;
     assert(tdcsrx_audio_magnitude(1024, 512, &baseline) == 1216);
