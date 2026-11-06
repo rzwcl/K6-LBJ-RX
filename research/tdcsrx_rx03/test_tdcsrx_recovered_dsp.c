@@ -111,7 +111,8 @@ static void audio_feed_bit(tdcsrx_audio_state_t *state,
                            audio_capture_t *capture)
 {
     unsigned int sample_index;
-    const uint8_t phase_step = bit ? 6u : 4u; /* 1800 Hz for 1, 1200 Hz for 0 */
+    const uint8_t phase_step = bit ? 4u : 6u; /* standard: 1200 Hz for 1, 1800 Hz for 0 */
+    *phase = 0u; /* FFSK modem restarts each bit at the same phase */
 
     for (sample_index = 0u; sample_index < 8u; ++sample_index) {
         const uint16_t sample = (uint16_t)(2048 +
