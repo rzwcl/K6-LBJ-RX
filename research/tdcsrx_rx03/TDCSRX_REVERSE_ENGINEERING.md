@@ -223,6 +223,45 @@ operation with an independent `0x05B9` reference on deterministic data, and
 injects each of the 26 possible single-bit errors into synthetic valid words.
 This verifies the reconstructed BCH layer, not the full RF sampling chain.
 
+## Two parallel discriminators and collector states
+
+A closer reading of the tail of the DSP routine at `0x0950` shows that the
+application maintains **two separate bit decision paths**, both derived from
+the same 1,200/1,800 Hz I/Q magnitudes:
+
+- The first path at state offsets `+0x70..+0x7B` uses the 16-bit literal
+  `0x0302` stored at offset `+0x78`: weights `(2, 3)`.
+- The second path at state offsets `+0x7C..+0x87` uses the literal
+  `0x0203` stored at offset `+0x84`: weights `(3, 2)`.
+
+For each path the discriminator is formed as:
+
+`diff = magnitude_1200 * weight_1200 - magnitude_1800 * weight_1800`
+
+Each path has its own previous-difference sign and bit-phase accumulator. The
+phase accumulator advances by `0x2000` per sample (eight increments per
+1,200-baud bit). At a discriminator sign transition, the phase state is
+nudged one quarter of the way toward `0x9000`. When the accumulator reaches
+`0x10000`, the code subtracts one bit period and sends the decision bit to
+its own collector.
+
+- First decision path calls the collector at code offset `0x0800` with state
+  base `parent_state + 0x88`.
+- Second decision path calls the same collector at code offset `0x0800`
+  with state base `parent_state + 0xC8`.
+
+Thus the original image has two parallel software bit-decision and frame
+collector states; the earlier single-`tdcsrx_stream_state_t` host module is
+only a partial model. The two paths share the tone correlators but have
+independent discriminator/clock recovery and sync/frame state.
+
+The helper called at code offset `0x0198` converts each I/Q accumulator pair
+(`+0x14/+0x18` and `+0x1C/+0x20`) into the magnitude values consumed by the
+two discriminators. Its exact integer approximation, saturation and smoothing
+are still being translated. The weights and phase-recovery structure above
+are literal/register-independent instruction evidence; the meaning of the
+two alternative weighting paths is not yet definitively named by the binary.
+
 ## K6 porting implications — not yet implemented or bench-verified
 
 The original app's PA4/DAC/ADC sampling path belongs to its F4HWN/PY32F071
