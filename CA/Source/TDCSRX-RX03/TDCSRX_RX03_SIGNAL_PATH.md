@@ -72,6 +72,32 @@ The 45-byte application frame contains a 32-byte business payload and a
 big-endian CRC-16/XMODEM. The field layout and header rules are documented in
 [`TDCSRX_REVERSE_ENGINEERING.md`](TDCSRX_REVERSE_ENGINEERING.md).
 
+## Dual discriminator paths — recovered structure
+
+The DSP does not produce just one software bitstream. It calculates two
+parallel discriminators from the same 1,200/1,800 Hz I/Q magnitudes:
+
+| Path | State offsets in parent DSP state | Literal weights | Separate stream state |
+|---|---|---|---|
+| A | `+0x70..+0x7B` | `0x0302` = (1200:2, 1800:3) | `parent + 0x88` |
+| B | `+0x7C..+0x87` | `0x0203` = (1200:3, 1800:2) | `parent + 0xC8` |
+
+Each path forms
+`diff = magnitude_1200 * weight_1200 - magnitude_1800 * weight_1800`,
+tracks its own previous sign and phase accumulator, advances phase by
+`0x2000` per sample, and nudges phase toward `0x9000` by one quarter at a
+sign transition. At `0x10000` it emits a bit to its own `0x0800` collector.
+
+This establishes two independent software bit/frame paths, not two RF
+frequencies. The reason both swapped-weight paths are enabled is not yet
+named by the target binary. The magnitude helper at code offset `0x0198`
+and its exact fixed-point behavior still require reconstruction.
+
+The current `tdcsrx_recovered_stream.c` models one collector only; it does
+not yet model these two parallel discriminator/collector instances and must
+not be described as the complete original stream path.
+
+
 ## K6 front-end path to test
 
 The original app's PA4 ADC method is not directly reusable: it targets the
