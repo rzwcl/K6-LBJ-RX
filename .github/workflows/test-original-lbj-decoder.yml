@@ -1,0 +1,28 @@
+name: Test original LBJRX decoder
+
+on:
+  push:
+    paths:
+      - "research/original_apps/LBJRX-RX04/**"
+      - "research/tests/lbjrx_v04/**"
+      - ".github/workflows/test-original-lbj-decoder.yml"
+  pull_request:
+    paths:
+      - "research/original_apps/LBJRX-RX04/**"
+      - "research/tests/lbjrx_v04/**"
+      - ".github/workflows/test-original-lbj-decoder.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and test original decoder
+        run: make -C research/tests/lbjrx_v04 test
+      - name: Clean test executable
+        if: always()
+        run: make -C research/tests/lbjrx_v04 clean
