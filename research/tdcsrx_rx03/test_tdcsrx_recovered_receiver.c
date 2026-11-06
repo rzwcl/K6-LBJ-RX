@@ -206,12 +206,97 @@ static void test_invalid_header_not_delivered(void)
     assert(capture.calls == 0u);
 }
 
+static void build_bitstream(const uint8_t frame[TDCSRX_FRAME_SIZE],
+                              bool inverted,
+                              uint8_t bits[32u + TDCSRX_RX_FRAME_WORD_MAX *
+                                                TDCSRX_CODEWORD_BITS])
+{
+    unsigned int bit;
+    unsigned int i;
+    uint8_t padded[TDCSRX_RX_FRAME_BUFFER_SIZE];
+
+    memset(padded, 0, sizeof(padded));
+    memcpy(padded, frame, TDCSRX_FRAME_SIZE);
+
+    for (bit = 0u; bit < 32u; ++bit) {
+        uint8_t value = (uint8_t)((TDCSRX_SYNC_WORD >> (31u - bit)) & 1u);
+        bits[bit] = (uint8_t)(value ^ (inverted ? 1u : 0u));
+    }
+
+    for (i = 0u; i < TDCSRX_RX_FRAME_BUFFER_SIZE; i += 2u) {
+        uint16_t word = (uint16_t)(((uint16_t)padded[i] << 8) | padded[i + 1u]);
+        uint32_t codeword = make_bch_codeword(word);
+        unsigned int base = 32u + (i / 2u) * TDCSRX_CODEWORD_BITS;
+
+        for (bit = 0u; bit < TDCSRX_CODEWORD_BITS; ++bit) {
+            uint8_t value =
+                (uint8_t)((codeword >> (TDCSRX_CODEWORD_BITS - 1u - bit)) & 1u);
+            bits[base + bit] = (uint8_t)(value ^ (inverted ? 1u : 0u));
+        }
+    }
+}
+
+static void test_two_paths_interleaved(void)
+{
+    enum { STREAM_BITS = 32u + TDCSRX_RX_FRAME_WORD_MAX * TDCSRX_CODEWORD_BITS };
+    tdcsrx_receiver_t receiver;
+    capture_t capture;
+    uint8_t frame_a[TDCSRX_FRAME_SIZE];
+    uint8_t frame_b[TDCSRX_FRAME_SIZE];
+    uint8_t bits_a[STREAM_BITS];
+    uint8_t bits_b[STREAM_BITS];
+    unsigned int i;
+
+    memset(&capture, 0, sizeof(capture));
+    tdcsrx_receiver_init(&receiver);
+    make_frame(frame_a, 0);
+    make_frame(frame_b, 1);
+    build_bitstream(frame_a, false, bits_a);
+    build_bitstream(frame_b, true, bits_b);
+
+    /* Two target discriminator lanes advance independently from the same
+       sample cadence; interleave their bits to expose accidental shared state. */
+    for (i = 0u; i < STREAM_BITS; ++i) {
+        tdcsrx_receiver_feed_bit(&receiver, 0u, bits_a[i],
+                                 capture_frame, &capture);
+        tdcsrx_receiver_feed_bit(&receiver, 1u, bits_b[i],
+                                 capture_frame, &capture);
+    }
+
+    assert(capture.calls == 2u);
+    /* Last callback is path B because its bit was fed second. */
+    assert(capture.path == 1u);
+    assert(capture.message.train_number == 7654321u);
+}
+
+static void test_reacquire_after_frame(void)
+{
+    tdcsrx_receiver_t receiver;
+    capture_t capture;
+    uint8_t frame[TDCSRX_FRAME_SIZE];
+
+    memset(&capture, 0, sizeof(capture));
+    tdcsrx_receiver_init(&receiver);
+    make_frame(frame, 0);
+
+    feed_frame(&receiver, 0u, frame, false, 0u, -1,
+               capture_frame, &capture);
+    feed_frame(&receiver, 0u, frame, false, 0u, -1,
+               capture_frame, &capture);
+
+    assert(capture.calls == 2u);
+    assert(capture.path == 0u);
+    assert(capture.message.train_number == 7654321u);
+}
+
 int main(void)
 {
     test_complete_frame_path_a();
     test_complete_inverted_frame_path_b();
     test_bad_crc_not_delivered();
     test_invalid_header_not_delivered();
+    test_two_paths_interleaved();
+    test_reacquire_after_frame();
 
     puts("TDCSRX recovered dual-path frame assembler host tests: PASS");
     puts("- 23 decoded 16-bit words assemble the 45-byte frame");
@@ -219,5 +304,7 @@ int main(void)
     puts("- inverted sync and two-bit sync tolerance");
     puts("- single-bit BCH correction before frame CRC");
     puts("- invalid CRC/header rejected");
+    puts("- two independent paths interleaved without state sharing");
+    puts("- sync reacquisition after a completed frame");
     return 0;
 }
