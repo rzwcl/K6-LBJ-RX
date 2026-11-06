@@ -114,7 +114,7 @@ static void audio_feed_bit(tdcsrx_audio_state_t *state,
     const uint8_t phase_step = bit ? 4u : 6u; /* standard: 1200 Hz for 1, 1800 Hz for 0 */
 
     for (sample_index = 0u; sample_index < 8u; ++sample_index) {
-        const int amplitude = bit ? 700 : 1000; /* sweep the tone ratio across the 2:3 decision boundary */
+        const int amplitude = bit ? 650 : 1000; /* sweep the tone ratio across the 2:3 decision boundary */
         const uint16_t sample = (uint16_t)(2048 +
             (kSyntheticSine32[*phase & 31u] * amplitude) / 600);
         tdcsrx_audio_feed_sample_traced(state, sample,
