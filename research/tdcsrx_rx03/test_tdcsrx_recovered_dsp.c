@@ -240,7 +240,7 @@ static void test_full_9600_hz_audio_to_frame(void)
         fprintf(stderr, "\\nactual:   ");
         for (i = 0u; i < 96u && i < capture.bit_count[best_path]; ++i)
             fputc(capture.bits[best_path][i] ? '1' : '0', stderr);
-        fputc('\\n', stderr);
+        fputc('\n', stderr);
     }
     fprintf(stderr, "sync shift=%08lX/%08lX phase=%08lX/%08lX corr=%ld,%ld,%ld,%ld\n",
             (unsigned long)state.receiver.path[0].stream.sync_shift,
