@@ -1,75 +1,88 @@
-# 作者上游源码基线
+# LOSEHU 0.13.2 K6 固件基线与硬件接口
 
-本项目的目标底座不是当前随意滚动的 upstream `main`，而是先以作者仓库中与用户固件命名最吻合的版本进行复现。
+本文只记录完整 K6 固件移植需要依赖的上游基线、Bootloader 约束和 DP32G030/BK4819 接口。它不代表 LBJRX 或 TDCSRX 已移植完成。
 
 ## 固定上游版本
 
-- 上游仓库： https://github.com/losehu/uv-k5-firmware-custom
+- 仓库：https://github.com/losehu/uv-k5-firmware-custom
 - 标签：`0.13.2`
-- 标签 commit：`021656ea13226d349e31acd6eb21079c5bab64c7`
-- 该 commit 日期：2024-09-21
-- 本项目安装脚本：`tools/install_overlay.py`
-- 后续不得静默改用 upstream `main` 或更新标签；版本变更必须先对比代码和构建结果。
+- commit：`021656ea13226d349e31acd6eb21079c5bab64c7`
+- 不使用滚动 `main` 替代固定标签；基线升级必须先做差异审查。
 
-## 用户提供的固件镜像对应关系
+## 用户提供的 LOSEHU132HS 镜像
 
-用户上传至本仓库根目录的 `LOSEHU132HS(MDC尾音).bin`：
-- GitHub 文件大小：61,458 bytes。
-- 作者 `0.13.2` 的 `Makefile` 默认打包前缀为 `LOSEHU132`。
-- 作者 README 说明 `HS` 后缀表示 `H + S`：中文全字库/拼音输入相关配置，加 SI4732 支持。
-- 作者 Makefile 的后缀逻辑可复现为 `ENABLE_CHINESE_FULL=4`、`ENABLE_PINYIN=1`、`ENABLE_4732=1`。
-- 作者 `fw-pack.py` 会在原始 firmware binary 中间插入 16 字节版本字段，并在尾部增加 2 字节 CRC，因此打包文件比原始 `firmware.bin` 多 18 bytes。61,458 - 18 = 61,440 bytes，恰好为 60 KiB。
-- 同标签 `firmware.ld` 的 FLASH 长度是 60 KiB。因此该镜像文件长度与 60 KiB 原始固件加 18 字节打包开销吻合。
+仓库此前保存的 `LOSEHU132HS(MDC尾音).bin`：
+- 大小 61,458 bytes。
+- 作者 0.13.2 的打包格式在 raw firmware 中间插入 16-byte 版本字段、尾部附加 2-byte CRC；打包文件比 raw 多 18 bytes。
+- 按该格式解包后 raw 区长度为 61,440 bytes（60 KiB），版本字段为 `*OEFW-LOSEHU`，CRC-16/XMODEM 为 `0xEE94`，与文件保存值一致。
+- 这证明该文件符合作者 0.13.2 的打包格式且传输完整；文件名包含“MDC尾音”，不能单凭文件名或版本字段证明它与公开 tag 的机器码完全一致。
 
-进一步对用户 BIN 做了真实解包校验：按作者 0.13.2 的 128-byte XOR 混淆表解码，恢复出头部向量表；0x2000 处的 16-byte 版本字段为 `*OEFW-LOSEHU`；尾部 CRC-16/XMODEM 计算值 `0xEE94` 与文件保存值一致。由此确认该文件采用作者 fw-pack.py 的打包格式且未发生传输损坏。由于版本字段写的是 AUTHOR_STRING（默认 LOSEHU），并不包含 HS 后缀，因此仍不能仅凭此字段证明源代码 tag 和机器码完全一致；文件名中的“MDC尾音”也可能代表额外定制。
+该镜像只作为用户当前固件/EEPROM 结构研究的参考，不是本项目的代码来源，也不会被覆盖或改写。
 
-## LBJ 专用镜像的构建配置方向
+## 现有多固件 Bootloader
 
-LBJ 固件是独立接收系统，不是把当前 132HS 所有功能原样保留后再塞进 LBJ：
-- 保留中文界面所需配置，首选 `ENABLE_CHINESE_FULL=4`。
-- 关闭拼音输入 `ENABLE_PINYIN=0`。
-- 关闭 SI4732 `ENABLE_4732=0`（该 LBJ 接收链使用 BK4819；SI4732 功能不是 LBJ 解码的依赖）。
-- 关闭与 FSK FIFO 冲突的 Messenger、MDC1200、Aircopy。
-- 由链接器强制检查 60 KiB FLASH 上限；不能以打包后文件尺寸代替原始固件尺寸。
-- 是否需要进一步裁剪其他 LOSEHU 功能，以完整链接结果和中文显示测试决定，不凭估算。
+用户现有引导器：[losehu/uv-k5-bootloader-custom](https://github.com/losehu/uv-k5-bootloader-custom)，Release `0.02`。
 
-## 已核对的 0.13.2 集成锚点
+已核对的布局要点：
+- 使用 512 KiB EEPROM 保存二级引导、固件目录和固件镜像。
+- 固件目录从 EEPROM `0x40000` 一带开始，最多 64 项，每项 32 bytes。
+- 二级引导镜像从 `0x41000` 读取；固件镜像数据区由目录条目给出。
+- 选择条目后，二级引导把所选固件复制到 MCU Flash 应用区执行。
+- 单个固件 raw image 不能超过 60 KiB。
 
-以下主要锚点在作者标签 `0.13.2` 中存在：
-- Makefile：`OBJS += app/messenger.o`、`LDFLAGS =`。
-- main.c：`#include "app/app.h"`、唯一的 `RADIO_SelectVfos();`、唯一的 `RADIO_SetupRegisters(true);`、`GUI_SelectNextDisplay(DISPLAY_MAIN);`。
-- app/app.c：状态栏 include、读取 `BK4819_REG_02` 中断状态、`APP_Update`、ProcessKey 定义、扫描器按键表。
-- ui/ui.h / ui/ui.c：DISPLAY_SCANNER 枚举和显示/按键映射。
-- radio.c：三个主要 TX 入口 `RADIO_SetTxParameters`、`RADIO_PrepareTX`、`RADIO_PrepareCssTX`。
+因此最终方案是两份独立完整 K6 镜像、两个 EEPROM 固件目录项。不得修改基础 Bootloader、`L_BL002` 或覆盖用户已有日常/救援固件。
 
-安装脚本已调整为用正则匹配 main.c 的 VFO 初始化调用对，兼容该标签实际空行格式。仍须在真实 checkout 上执行 dry-run、安装、构建；锚点核对不能代替编译。
+## DP32G030 引脚与 PA4 约束
 
-## LBJ 构建后缀 K
+固定 LOSEHU 0.13.2 中：
+- `driver/gpio.h` 定义 `GPIOA_PIN_KEYBOARD_1 = 4`。
+- `driver/keyboard.c` 将这个 pin 用作数字键盘矩阵列输入。
+- `hardware/dp32g030/portcon.def` 中，PA4 可选 GPIO、CMP0_VP、XTAH_XO；没有 SARADC 复用项。SARADC 通道从 PA5/PA6 等其他引脚开始。
 
-作者 0.13.2 Makefile 在 `ENABLE_CHINESE_FULL=4`、`ENABLE_PINYIN=0`、`ENABLE_4732=0` 时生成后缀 `K`。因此 LBJ 输出名为 `LOSEHU132K.bin`：保留完整中文显示字库，不带拼音输入，也不带 SI4732 接收功能。它与用户上传的 `LOSEHU132HS` 是不同功能配置，符合独立 LBJ 接收系统的裁剪目标。本 LBJ 镜像也明确关闭 MDC1200/MDC 尾音功能，因为 MDC 与 LBJ 共用的 BK4819 FSK/FIFO 资源会冲突；它不是用户当前 132HS(MDC尾音)固件的功能替代品。
+因此原版 FAP1 APP 在 PA4 上进行 MCU ADC 采样的代码不能直接复制到 K6。不要把 PA4 临时改成 ADC 后导致键盘功能冲突，也不要假设把采样变量改名就能解决引脚冲突。
 
-## 现有 Bootloader 适配关系
+## BK4819 FSK/FFSK 硬件能力（固定上游 0.13.2）
 
-用户现有的多固件管理系统是 [losehu/uv-k5-bootloader-custom](https://github.com/losehu/uv-k5-bootloader-custom)，Release 为 `0.02`。其源码 README 和 EEPROM/加载代码说明：512 KiB EEPROM 存放二级引导 `L_BL002.bin`、固件目录及多个固件镜像；目录最多 64 项；选中后由二级引导把固件从 EEPROM 复制到 MCU Flash 运行。每个固件文件不得超过 60 KiB。
+0.13.2 的 `driver/bk4819.c` 已包含两类参考配置：
 
-本次 LBJ raw 镜像 53,476 bytes，处于限制以内。正确集成方式是在现有 EEPROM 固件目录中追加 LBJ 镜像及一个条目，沿用原来的 Bootloader/K5WEB 机制；不需要再设计或替换 Bootloader，也不是另造一组同时驻留 Flash 的“独立槽位”。构建阶段未写设备 EEPROM；实际加入目录时正常需要写入新增镜像与目录记录。
+### 直 FSK 1.2K
 
-## 完整构建结果（2026-11-05）
+`BK4819_SetupAircopy()` 使用 `REG_58 = 0x00C1`，配置 FSK 1.2K RX/带宽和 FSK enable；同时配置 `REG_72` 的 1200 速率控制字。该函数用于 Aircopy，不能不加审查地直接作为 LBJ 配置，因为它还设置了 Aircopy 的 CRC 和包长参数。
 
-GitHub Actions run：`41962799054`
-- 源码提交：`5f7f41d7b39ddec33922c1833481896bf4a5e38a`
-- Artifact：`K6-LBJ-RX-LOSEHU132K`（ID `13386116726`）
-- Artifact URL：`https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054/artifacts/13386116726`
-- raw firmware：53,476 bytes
-- packed LOSEHU132K.bin：53,494 bytes；额外 18 bytes 为版本字段和 CRC
-- CRC-16/XMODEM：`0xAEB0`，验证通过
-- FLASH：53,476 / 61,440 bytes（87.04%）
-- RAM：5,124 / 16,384 bytes（31.27%）
-- map / ELF / raw BIN / packed BIN / JSON 报告均在 artifact 中
-- 构建工具链：arm-none-eabi-gcc 10.3.1、binutils 2.38、newlib 3.3.0
+### FFSK 1200/1800
 
-## 构建入口
+`enable_msg_rx(true)` 中的 `REG_58` 位字段为：
+- TX mode `001`：FFSK 1200/1800 TX。
+- RX mode `111`：FFSK 1200/1800 RX。
+- RX gain `11`。
+- RX bandwidth `001`。
+- FSK enable = 1。
 
-`.github/workflows/build-lbj.yml` 从固定标签 clone 上游源码，在临时工作目录应用 overlay，先 dry-run，再安装并做二次 dry-run 幂等性检查，最后构建 LBJ 专用固件。构建产物作为 GitHub Actions artifact 保存，不把生成 BIN 混入源码提交。
+合成值为 `0x3F03`。该函数还设置 `REG_70`、`REG_72`、同步字 `REG_5A/REG_5B`、CRC 开关 `REG_5C`、FIFO 阈值 `REG_5E`、数据长度 `REG_5D`，然后清 FIFO、开启接收。它是 FFSK 的硬件参考，不应直接用于 TDCSRX，因为同步字、长度、CRC 和 polarity 要按 TDCSRX 原始协议重新配置。
 
-完整链接已经通过，但不等于 K6 实机验证。RF 捕获、FIFO 延迟/溢出、LCD、no-TX 和多系统备用槽位测试仍未执行。
+### FIFO 与中断
+
+- `REG_59[12]`：FSK RX enable；`REG_59[14]`：清 RX FIFO；`REG_59[10]`：RX 数据反相；`REG_59[3]`：同步字长度选择（2 或 4 字节）。
+- `REG_5A/REG_5B`：同步字节 0–3。
+- `REG_5D`：FSK data length，11 bits，最大 2,048 bytes；文档示例值 0x0F 表示 16 bytes。
+- `REG_5E[2:0]`：RX FIFO almost-full threshold；RX FIFO 总容量 8 words。
+- `REG_5F`：读取一个 16-bit FIFO word。
+- `REG_3F[1]` / `REG_02[1]`：FSK RX sync 中断使能/状态。
+- `REG_3F[12]` / `REG_02[12]`：RX FIFO almost-full 中断使能/状态；`REG_3F[13]` / `REG_02[13]`：RX finished。
+- 固定上游 `app/messenger.c` 按 FIFO word 低字节先、高字节后读取；MDC1200 路径会参考 `REG_0B[7]` 的负极性标志对 word 做 XOR。K6 适配必须根据目标协议单独确认 FIFO bit order 和极性处理。
+
+## 两套接收器的候选硬件路径
+
+| 固件 | 目标射频/协议 | 候选 BK4819 接收模式 | 软件层必须保留 |
+|---|---|---|---|
+| LBJRX | 821.2375 MHz；POCSAG 1200 baud | 直 FSK 1.2K | 原版 POCSAG 同步、BCH/parity、batch、RIC/消息处理 |
+| TDCSRX | 457.550 MHz；FFSK 1200/1800 | FFSK 1200/1800 RX | 原版同步容错、26-bit BCH、45-byte frame CRC/字段解析 |
+
+是否让 BK4819 硬件直接匹配协议的完整 4-byte sync，还是先从交替 preamble 开始读 FIFO、再由软件找到协议 sync，必须根据 BK4819 同步行为和真实 FIFO 捕获验证后决定。不能先假设硬件会保留或剥离 sync 的固定方式。
+
+## 当前验证边界
+
+- 已在固定 0.13.2 源码中确认直 FSK/FFSK 配置函数、FIFO 访问、GPIO/键盘 pin 定义。
+- 已通过 BK4819v3 寄存器表确认 FSK/FFSK mode 字段、FIFO 大小、阈值和 11-bit 数据长度。
+- 目前没有改动 LOSEHU 底层驱动，没有建立 K6 LBJRX/TDCSRX 完整固件，也没有 K6 实机射频捕获验证。
+- 后续必须在两个独立固件目标中分别实现只接收适配，避免与 Messenger/MDC1200/Aircopy 争用同一个 BK4819 FIFO。

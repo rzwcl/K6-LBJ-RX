@@ -1,159 +1,76 @@
-> **长期交接入口：** 新会话请先阅读 [docs/CONTINUATION.md](docs/CONTINUATION.md)，以 GitHub `main` 分支为准继续开发。该文档记录仓库文件、固定上游源码版本、验证边界和下一步实机验证顺序。
-> **上游源码基线：** 作者 [losehu/uv-k5-firmware-custom](https://github.com/losehu/uv-k5-firmware-custom) 的 `0.13.2` 标签（commit `021656ea13226d349e31acd6eb21079c5bab64c7`）；版本对应分析见 [docs/UPSTREAM_BASE.md](docs/UPSTREAM_BASE.md)。
-> **完整固件构建：** GitHub Actions 的 [Build K6 LBJ RX](.github/workflows/build-lbj.yml) 从固定上游源码拉取、安装 overlay 并构建，结果保存在 Actions artifacts。
-> **最新已验证构建产物：** [LOSEHU132K.bin / firmware.map / ELF](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/41962799054/artifacts/13386116726)（53,494 B packed，CRC `0xAEB0`）。
+# K6 LBJRX / TDCSRX 原版移植工作区
 
-# K6 LBJ 独立接收固件 v0.2（UI rev3 + BK4819 FSK 适配）
+<badge color="warning">当前没有可刷入的 K6 LBJRX / TDCSRX 固件</badge>
 
-目标设备：老款泉盛 K6，DP32G030 + BK4819。底座按 `losehu/uv-k5-firmware-custom` 的老款 K5/K6 源码接口编写。
+本仓库的目标是把公开的 LBJRX、TDCSRX 原版实现分别适配到老款泉盛 K6（DP32G030 + BK4819），最终得到**两份互相独立的完整 K6 固件镜像**，通过用户现有的 LOSEHU 多固件 Bootloader 作为两个独立目录项切换。不会把两个接收器混成一个程序，也不改基础 Bootloader 或 `L_BL002`。
 
-**这版已经完成作者 LOSEHU 0.13.2 源码树上的完整 ARM GCC 编译和链接，生成了 `LOSEHU132K.bin`。** 当前仍是“待 K6 射频/按键实测的集成候选版”，不是已验证可刷写固件。构建占用 FLASH 53,476/61,440 bytes、RAM 5,124/16,384 bytes；CRC 校验通过。
+**之前基于 `K6-LBJ-RX` 实验解码器生成的 BIN 不属于原版移植，存在实现错误，不能刷入。** 对应的实验解码器、专属构建流程和二进制已从当前相关分支清理；旧提交仍保留在 Git 历史中，没有改写历史。
 
-## 与现有多固件 Bootloader 的关系
+## 当前确认的原版资料
 
-LBJ 是现有 LOSEHU 多固件目录中的一个新固件项，不另做一套引导器。该 Bootloader 使用 512 KiB EEPROM 保存二级引导和多个固件镜像，选择条目后把选中的镜像复制到 MCU Flash 执行；每个固件镜像最多 60 KiB。LBJ 本次 raw 镜像为 53,476 bytes。最终添加 LBJ 时会通过现有 Bootloader/K5WEB 流程向 EEPROM 固件目录追加镜像和目录记录，保留原有日常固件、救援固件及 Bootloader。
+### LBJRX
 
-## 屏幕布局
+公开归档：[LBJRX-cn.v5.5.6.app](https://github.com/troilus/lbjradioweb/tree/main/archive/apps)。
 
-![K6 LBJ LCD preview](docs/lcd_preview.png)
+同名源码候选来自 [troilus/k1lbj](https://github.com/troilus/k1lbj/tree/main/App/apps/lbj)：
+- 构建脚本标记应用版本 `0.4`、API 最低版本 `2`，与公开归档包的应用版本/API 匹配。
+- 源文件已经原样保存到 [research/original_apps/LBJRX-RX04](research/original_apps/LBJRX-RX04/)。
+- 当前还没有用原作者工具链重建并比较 FAP1 代码 CRC，因此版本对应已确认，逐字节构建对应尚未确认。
+- 原版 `lbj_app.c` 在 PA4 走 MCU ADC 音频采样；可复用的 POCSAG 解码入口是 `lbj_rx_bit()`，K6 硬件采集部分必须替换。
 
-图为 128×64 屏幕排版示意，不是实机截图。
+### TDCSRX
 
-| 页面 | 显示内容 |
+公开归档：[TDCSRX-cn.v5.5.6.app](https://github.com/troilus/lbjradioweb/tree/main/archive/apps)。
+
+- 发布包为 TDCS RX 0.3，FAP1，代码区 4,076 B，API 最低版本 3。
+- 目前没有找到匹配的原作者 C/H 源码。
+- [research/tdcsrx_rx03](research/tdcsrx_rx03/) 保存了从这份确切版本机器码恢复的部分 C 实现、主机合成数据测试和反汇编报告。
+- 不能把这些部分恢复文件称为完整原作者源码或可运行的 K6 接收器。
+
+## K6 接收前端
+
+原版音频采样不能原样移植：
+
+- LBJRX 0.4 采样 PA4，19.2 ksample/s。
+- TDCSRX 0.3 采样 PA4，9.6 ksample/s，并用软件做 1200/1800 Hz 双音判决。
+- 在 LOSEHU 0.13.2 的 K6/DP32G030 映射中，PA4 是键盘列输入，不是可直接复用的 ADC 输入。
+
+K6 的 BK4819 本身有硬件解调与 FIFO：
+- **LBJ**：目标是 821.2375 MHz、POCSAG 1200 baud，研究使用 BK4819 直 FSK 1.2K。
+- **TDCS**：目标是 457.550 MHz、FFSK 1200/1800，研究使用 BK4819 FFSK 1200/1800。
+- 两者都应保留原版软件层的同步、纠错和业务解析；只替换不兼容的采样/解调入口。
+- FIFO 位序、同步字剥离、极性和重新捕获行为仍需用信号源与 K6 实机验证，现阶段没有任何实机验证结果。
+
+详细寄存器与引脚依据见 [docs/UPSTREAM_BASE.md](docs/UPSTREAM_BASE.md) 和 [TDCSRX 信号路径报告](research/tdcsrx_rx03/TDCSRX_RX03_SIGNAL_PATH.md)。
+
+## 保留的显示与操作要求
+
+以下是用户已经确认的 UI 规格，后续移植必须保留；它们不是当前已经实现的固件功能。
+
+| 页面 | 内容 |
 |---|---|
-| 开机标识 | `LBJ RX 821.2375`，约 1.5 秒后自动进入主页面；频率不再常驻显示 |
-| 主页面第一行 | `车` + 车次 + `上行/下行/待定` + 速度；方向直接夹在车次和速度之间，不加“方向”前缀，速度不加“速度”前缀 |
-| 主页面第二行 | 公里标以普通小字体独立显示，例如 `K201`；只显示整数公里，原始小数值仍留在内部用于方向判断 |
-| 主页面底部 | `型` + 机车型号/车号；`线` + 线路，型号和线路靠下排列 |
-| 补充信息页 | 新规则车次类型、经纬度原始数字；不显示 A/B 端位 |
-| 无数据 | 等待 LBJ POCSAG 报文 |
+| 开机标识 | `LBJ RX 821.2375`，约 1.5 秒后进入主页面；频率不常驻显示 |
+| 主页面第一行 | 车次 + 上行/下行/待定 + 速度；方向夹在车次与速度之间，不加“方向”前缀，速度不加“速度”前缀 |
+| 主页面第二行 | 公里标独占一行，例如 `K201`；显示整数公里，内部保留小数用于方向判断 |
+| 主页面底部 | 车型/机车号和线路尽量靠下排列 |
+| 补充信息页 | 新版车次类型、原始经纬度数字；不显示 A/B 端位 |
+| 无数据 | 显示等待报文状态 |
 
-主页面所有信息统一使用上一版的常规小字体，不再把公里标放大；只有屏幕最上方的历史序号/页码状态提示继续使用原本的微型状态字体。公里标、车次、速度、型号和线路保持一致的字号与字形风格。
+主页面字体统一使用常规小字体，车次、速度、公里标、型号和线路保持同一字号风格。按键：UP 查看较新的历史，DOWN 查看较旧历史，MENU 切换主页面/补充页，EXIT 返回普通电台主界面。不新增长按功能，不占用现有多系统引导器按键。历史记录暂定 10 条，仅放 RAM，不写 EEPROM。
 
-### 按键安排
+## K6 基线与现有 Bootloader
 
-| 按键 | 操作 |
-|---|---|
-| UP | 查看较新的历史记录 |
-| DOWN | 查看较旧的历史记录 |
-| MENU | 在主页面和补充信息页之间切换 |
-| EXIT | 退出 LBJ 页面，返回普通电台主页面 |
+- 固件底座参考 [losehu/uv-k5-firmware-custom](https://github.com/losehu/uv-k5-firmware-custom) 的 `0.13.2` 标签，commit `021656ea13226d349e31acd6eb21079c5bab64c7`。
+- 现有多固件引导器：[losehu/uv-k5-bootloader-custom](https://github.com/losehu/uv-k5-bootloader-custom)，Release `0.02`。每个完整固件镜像受 60 KiB 限制；安装方式是在 EEPROM 固件目录中增加镜像和条目。
+- 最终应生成两份分别编译、分别验证的完整固件；保留原有日常/救援固件，不另造 Bootloader，不把 FAP1 APP 误当作 K6 完整固件。
 
-不额外占用长按功能，也不改变原有多系统引导器按键。
+用户上传的 `LOSEHU132HS(MDC尾音).bin` 已按作者 0.13.2 的打包格式做过只读解包和 CRC 校验；它是参考基线，不表示用户机器码与公开 tag 已逐字节确认一致。
 
-历史记录暂定 **10 条**，仅放 RAM，不向 EEPROM 写入。`LBJ_TrainRecord` 为 152 字节，10 条加 engine 索引/待绑定缓存约 1.8 KiB；这不等于固件 Flash 占用。历史数据断电会清空。
+## 仓库内容与下一步
 
-## 当前实现
+- `research/original_apps/LBJRX-RX04/`：LBJRX 0.4 源码参考副本，源文件与上游 blob SHA 一致，未修改。
+- `research/tdcsrx_rx03/`：TDCSRX 0.3 部分逆向恢复、测试和报告。
+- `docs/CONTINUATION.md`：当前任务状态、清理记录和下一步交接。
+- `docs/UPSTREAM_BASE.md`：LOSEHU 0.13.2 基线、DP32G030 引脚与 BK4819 FSK/FFSK 能力。
 
-### 1. POCSAG 1200 解码核心
-
-`FirmwareOverlay/app/lbj_pocsag.c`
-
-- POCSAG 同步字 `0x7CD215D8`。
-- 识别正常/反相判决极性；同步字容忍最多 2 bit 差异。
-- 处理 16-word batch 的码字流。
-- BCH(31,21) + parity 检查；可纠正单 bit 错误。
-- 按 Function 0 数字页、Function 1–3 文本页组装载荷。
-- 页完成后通过 callback 交给业务层，不在 FIFO/中断路径中做 UI 绘制。
-- `LBJ_AppQueueBit(bit, now_ms)` 是 ISR/射频入口；`lbj_radio.c` 从 BK4819 FIFO 取数据，按低字节先、高字节后和 MSB-first 位序送入 128 项环形队列。`APP_Update()` 中的 `LBJ_AppProcess()` 每轮最多处理 64 bit，BCH 和业务解析不放在中断里。
-
-### 2. LBJ 业务解析
-
-`FirmwareOverlay/app/lbj_core.c`
-
-- 解析 `1234000`：车次原始数字、速度、公里标（末位为小数位）、Function 方向提示。
-- 解析 `1234002`：两字节 ASCII 前缀、8 位 BCD 机车登记号、端位、8 字节 GB2312 线路名、经纬度数字。
-- 车型号取法与 Windows 版 `LBJ_Map/main.py` 一致：CRH 车型取登记号第 4–7 位，其余车型取后 5 位，保留前导零。
-- `1234000` 与 `1234002` 以 2.5 秒窗口做最近事件匹配；未先后到达时保留最多 3 条待绑定机车信息。后续同车次运行报文可继承最近一次绑定。
-- 每辆车的方向优先按公里标变化判断；公里标不足时使用 Function 3=上行、1=下行提示。
-
-### 3. 车型库
-
-`FirmwareOverlay/app/lbj_loco.c` 共 153 项，按你提供的注册号映射生成，不使用旧 SX1276 工程中的数组索引替代。
-
-### 4. 新版车次规则
-
-`FirmwareOverlay/app/lbj_train_type.c` 按 `New-Train-Number-Compilation-Rules` 的 `mian（动车组自2026年12月下旬）.py` 分类顺序移植。包括 `F` 折返、`00` 动车组回送优先、普通 `0` 回送、DJ 检测/确认、DH、B 班列、X/G/T/K/D 试运行、普速字头和纯数字货运区间；保留规则中的区间空档，不做简单前缀泛化。
-
-## 文件结构
-
-```text
-K6_LBJ_RX_Prototype/
-  FirmwareOverlay/        # 可拷入 LOSEHU 源码树的 app/ui 文件
-    app/                  # POCSAG、LBJ 业务、车型表、车次分类
-    ui/                   # LBJ LCD 页面
-  src/                    # 同一核心模块的主机测试版本
-  include/                # 主机测试头文件
-  tests/                  # POCSAG、字段绑定、车次分类和启动页计时测试
-  tools/install_overlay.py
-  tools/build_arm_overlay_objects.py
-  docs/FSK_ADAPTER_DESIGN.md
-  docs/lcd_preview.png
-```
-
-## 已执行的验证
-
-在本包目录执行：
-
-```sh
-make clean test syntax-firmware-overlay
-python3 tools/build_arm_overlay_objects.py
-```
-
-当前输出：
-
-```text
-host tests: PASS
-core tests: PASS
-app tests: PASS
-radio adapter tests: PASS
-firmware overlay C syntax: PASS
-ARM EABI overlay objects: PASS (7 .o files; Clang 17)
-```
-
-测试覆盖：POCSAG 正常/反相极性、文本/数字页、单 bit BCH 错误纠正、`1234000`/`1234002` 绑定、`HXD3D-00477` 车号保留前导零、GB2312 线路字段、重复运行报文继承绑定、公里标变化方向判断、新版车次规则代表区间、两页循环，以及启动标识 1.5 秒计时（含 16 位 tick 回绕）。语法检查使用本包的接口 stub，不是完整 LOSEHU 工程 ARM 链接。
-
-安装脚本已在模拟 LOSEHU 目录完成 dry-run、写入、二次幂等写入和 Makefile 保护条件测试；射频寄存器和 FIFO 由主机 mock 测试覆盖。
-
-## 在 Windows 上准备独立构建副本（不要改日常工程）
-
-先把 LOSEHU 源码完整复制/克隆到单独目录，例如 `D:\work\uv-k5-firmware-custom-LBJ`。不要在日常固件的工作目录直接执行安装脚本；独立目录可以避免 `firmware.bin` 和目标文件覆盖日常版本。
-
-在 PowerShell 中从本包目录执行：
-
-```powershell
-python .\tools\install_overlay.py D:\work\uv-k5-firmware-custom-LBJ --dry-run
-python .\tools\install_overlay.py D:\work\uv-k5-firmware-custom-LBJ
-Set-Location D:\work\uv-k5-firmware-custom-LBJ
-make build ENABLE_LBJ=1 ENABLE_MESSENGER=0 ENABLE_MDC1200=0 ENABLE_AIRCOPY=0 ENABLE_CHINESE_FULL=4 ENABLE_PINYIN=0 ENABLE_4732=0 ENABLE_4732SSB=0 ENABLE_SPECTRUM=0 ENABLE_DOPPLER=0 ENABLE_FMRADIO=0
-(Get-Item .\firmware.bin).Length
-```
-
-`make build` 只构建，不写电台；不要用 `make all` 或 `make flash`。LBJ 模式关闭 UART 初始化和串口命令解析；仅把 driver/uart.o 链入以满足菜单对象中的 UART_Send 符号引用，不启动串口接收或 EEPROM 串口配置、VOX、DTMF 呼叫、自定义发送侧键、报警和 1750 Hz 发射，并在 `RADIO_PrepareTX`、`RADIO_PrepareCssTX`、`RADIO_SetTxParameters` 入口增加硬性 TX 返回保护。构建脚本会拒绝同时开启 Messenger、MDC1200 或 Aircopy，因为它们会争用 BK4819 FSK FIFO。`ENABLE_LBJ` 默认是 0，未指定时原固件编译路径保持关闭。
-
-`82123750` 是 LOSEHU 的 10 Hz 频率单位，对应 821.2375 MHz；运行时只修改 RX 频率结构，不保存频道或 EEPROM。你现有的 [LOSEHU 多固件 Bootloader](https://github.com/losehu/uv-k5-bootloader-custom) 将固件镜像作为 EEPROM 固件目录条目管理，选择后再搬运到 MCU Flash 运行；单个镜像上限为 60 KiB。本次 LBJ raw `firmware.bin` 已链接为 53,476 bytes，满足文件尺寸限制。
-
-## 编译状态与剩余验证（当前仍不要刷机）
-
-1. **BK4819 直 FSK 1200 FIFO 适配已接入源码。** `lbj_radio.c` 配置 `REG_58=0x00C1`（直 FSK 1.2K，不是 FFSK 1200/1800），设置 `0x7CD215D8` 同步字，并按 4 个 FIFO words 排空 `REG_5F`；正常/反相极性都会进入软件解码器。
-2. 数据字段设置为 2048 字节（`REG_5D=0xFFE0`），在 1200 bit/s 下约为 13.65 秒。首次同步由硬件识别，后续 POCSAG batch sync 留在数据流中交给 MCU 解析。该长接收窗口的跨报文行为、前导码检测和数据字节方向仍需实机/信号源验证。
-3. **作者 LOSEHU 0.13.2 完整工程 ARM GCC 编译和链接通过**，GitHub Actions run 41962240610 已生成 firmware ELF、raw BIN、packed BIN 和 firmware.map。
-4. 最终 raw `firmware.bin` 为 53,908 bytes，packed `LOSEHU132K.bin` 为 53,926 bytes；FLASH 53,908/61,440 bytes，RAM 5,128/16,384 bytes；CRC-16/XMODEM `0x9DF8` 通过，距离 60 KiB 上限还剩 7,532 bytes。
-5. 没有 K6 实机 RF 测试、接收灵敏度测试、屏幕测试或多系统槽位安装测试。必须先验证 POCSAG 同步、位序、正常/反相、完整报文和 2048 字节窗口后的重新捕获。
-6. 频率写入值已按 LOSEHU 的 10 Hz 单位修正为 `82123750`（即 821.2375 MHz），并显式把 RX 指针设回 `freq_config_RX`；频率只改运行时 RAM，不保存到频道或 EEPROM。
-7. 本次只在 CI 中生成固件，没有对电台写入任何数据。最终部署时需要通过现有 Bootloader/K5WEB 流程，把 LBJ 镜像和一个新目录条目追加到 EEPROM；这属于正常的固件安装步骤，不需要重刷基础 Bootloader 或替换 `L_BL002`，也不应覆盖现有日常/救援条目。
-
-**当前包已通过完整 LOSEHU 编译、链接和 60 KiB 容量核验，但尚未通过 K6 实机 RF/no-TX/Bootloader 装载测试。** 下一步是完成硬件接收和无发射验证，再按现有 Bootloader 的固件目录流程追加 LBJ 条目并测试选择启动。
-
-## 参考源码
-
-- LOSEHU K5/K6 固件底座：<https://github.com/losehu/uv-k5-firmware-custom>
-- LOSEHU BK4819 FSK/FSK FIFO 参考：<https://github.com/losehu/uv-k5-firmware-custom/blob/main/driver/bk4819.c>
-- BK4819v3 应用说明（FSK 寄存器字段参考）：<https://www.scribd.com/document/829727106/BK4819-Application-Note-v1-0>
-- POCSAG RX 算法参考（不同 MCU，不能直接烧录）：<https://github.com/armel/uv-k1-k5v3-firmware-custom/tree/main/App/apps/pocsagrx>
-- Windows 版 LBJ 字段和车型解析参考：<https://github.com/rzwcl/LBJ_Map/blob/main.py>
-- 新版车次分类规则：<https://github.com/rzwcl/New-Train-Number-Compilation-Rules/blob/main/mian%EF%BC%88%E5%8A%A8%E8%BD%A6%E7%BB%84%E8%87%AA2026%E5%B9%B412%E6%9C%88%E4%B8%8B%E6%97%AC%EF%BC%89.py>
-
-## TDCSRX RX 0.3 逆向研究（尚非 K6 固件）
-
-已恢复并单独保存原版 TDCSRX 0.3 的一部分应用帧解析逻辑，位于 [research/tdcsrx_rx03](research/tdcsrx_rx03/)。其中包含 C 代码、合成帧测试和逆向报告。它不是原作者完整 C 源码，未恢复音频 DSP/实时采样/完整 UI，也未接入 K6 固件。尤其 BCH 原版 `0xB905` 与独立参考 `0x05B9` 的 syndrome 差异尚未解决；不要把早期 `k6-full-firmware` 分支的 40-byte payload 试验代码直接当作正确实现。
+下一阶段：确认 LBJRX 源码与归档二进制的可复现对应；继续补全 TDCSRX 原版 DSP/帧组装；分别实现只接收的 BK4819 FIFO 前端；通过主机测试和 K6 实机信号源测试后，再建立两份独立完整固件构建。每个可验证阶段都会单独提交 GitHub，并记录提交号、构建结果和未验证边界。
