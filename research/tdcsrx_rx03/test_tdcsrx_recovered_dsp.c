@@ -234,6 +234,13 @@ static void test_full_9600_hz_audio_to_frame(void)
         fprintf(stderr, "bit compare: expected=%u best path=%u invert=%u offset=%u overlap=%u errors=%u\n",
                 expected_count, best_path, best_inversion, best_offset,
                 best_overlap, best_errors);
+        fprintf(stderr, "expected: ");
+        for (i = 0u; i < 96u && i < expected_count; ++i)
+            fputc(expected[i] ? '1' : '0', stderr);
+        fprintf(stderr, "\\nactual:   ");
+        for (i = 0u; i < 96u && i < capture.bit_count[best_path]; ++i)
+            fputc(capture.bits[best_path][i] ? '1' : '0', stderr);
+        fputc('\\n', stderr);
     }
     fprintf(stderr, "sync shift=%08lX/%08lX phase=%08lX/%08lX corr=%ld,%ld,%ld,%ld\n",
             (unsigned long)state.receiver.path[0].stream.sync_shift,
