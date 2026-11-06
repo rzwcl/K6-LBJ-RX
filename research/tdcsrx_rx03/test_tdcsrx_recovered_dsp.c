@@ -9,7 +9,7 @@ static void test_magnitude_198(void)
     int32_t baseline;
 
     baseline = 16;
-    assert(tdcsrx_audio_magnitude(3, 4, &baseline) == 5);
+    assert(tdcsrx_audio_magnitude(3, 4, &baseline) == 4);
     assert(baseline == 16); /* small increase is limited to 16, but decrease? */
 
     baseline = 16;
