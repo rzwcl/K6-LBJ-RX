@@ -5,6 +5,7 @@
 ## 文件
 
 - `tdcsrx_recovered_protocol.c/.h`：45 字节应用帧验证、32 字节 TDCS 业务负载字段提取、CRC-16/XMODEM，以及从原版指令恢复的 BCH(26,16) 余数和单比特纠错逻辑。
+- `tdcsrx_recovered_dsp.c/.h`：9.6 kHz ADC 样本滤波、1200/1800 Hz I/Q 滑动相关、精确 0x198 幅度/基线函数、双判决和双 collector 状态。
 - `tdcsrx_recovered_receiver.c/.h`：两条独立的 26-bit BCH 解码路径、45-byte 应用帧组装和 CRC 校验回调。
 - `tdcsrx_recovered_stream.c/.h`：从原版同步/码字收集例程恢复的 31/32 位同步窗口、极性判断、最多 2 bit 同步误差，以及 26 bit MSB-first 码字收集。
 - `test_tdcsrx_recovered.c`：仅使用合成数据的主机端测试，不依赖用户录音或 K6 硬件。

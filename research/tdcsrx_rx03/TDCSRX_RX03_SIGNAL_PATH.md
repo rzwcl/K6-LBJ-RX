@@ -72,6 +72,37 @@ The 45-byte application frame contains a 32-byte business payload and a
 big-endian CRC-16/XMODEM. The field layout and header rules are documented in
 [`TDCSRX_REVERSE_ENGINEERING.md`](TDCSRX_REVERSE_ENGINEERING.md).
 
+## Exact sample DSP reconstruction from Thumb instructions
+
+The original `0x0950` sample routine is now translated into
+`tdcsrx_recovered_dsp.c/.h`. The recovered constants and state layout are:
+
+- Sample rate: 9,600 Hz; one 1,200-baud symbol spans 8 samples.
+- DC tracker: `dc += (((sample << 4) - dc) >> 6)`, then input is
+  `sample - (dc >> 4)`.
+- Biquad:
+  `y = (0x140A*(x[n]-x[n-2]) + 0x3246*y[n-1] + 0xFFFFE813*y[n-2]) >> 14`.
+- The 1,200 Hz and 1,800 Hz I/Q correlators use the literal tables at code
+  offsets `0x0E27` and `0x0E2F`, with an 8-sample sliding history.
+- Helper at code offset `0x0198` returns
+  `max(abs(I),abs(Q)) + (min(abs(I),abs(Q)) >> 2) + (min(...) >> 3)`.
+  Its baseline rises by `max((magnitude-baseline)>>5, 16)` and falls by
+  `baseline-(baseline>>10)`; the initialized baselines are both 16.
+- The discriminator compares cross-normalized tone levels:
+  `mag1200*smooth1800*weight1200 - mag1800*smooth1200*weight1800`.
+  The two weight pairs are 2:3 and 3:2. Each has its own previous-difference
+  sign, phase accumulator, and 26-bit frame collector.
+- Each lane advances phase by `0x2000` per sample; on sign changes it nudges
+  phase a quarter of the way toward `0x9000`. At `0x10000`, it emits one
+  bit to its own collector.
+- The original initialized state block is `0x108` bytes. The two collector
+  states begin at parent offsets `0x88` and `0xC8`.
+
+All arithmetic in the translation explicitly models 32-bit wrap and ARM
+arithmetic right shifts. This reproduces the observed sample detector more
+closely than the earlier single-stream abstraction. It is still a host-side
+translation: no K6 ADC/audio route or BK4819 FIFO has been connected.
+
 ## Dual discriminator paths — recovered structure
 
 The DSP does not produce just one software bitstream. It calculates two
