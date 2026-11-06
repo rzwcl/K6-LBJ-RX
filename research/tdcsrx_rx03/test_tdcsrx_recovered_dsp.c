@@ -174,8 +174,30 @@ static void test_full_9600_hz_audio_to_frame(void)
 
     /* Alternating mark/space warm-up, followed by the recovered target sync. */
     for (i = 0u; i < 64u; ++i) {
-        expected[expected_count++] = (uint8_t)(i & 1u);
-        audio_feed_bit(&state, (uint8_t)(i & 1u), &phase, &capture);
+        int32_t b12 = state.smooth_1200;
+        int32_t b18 = state.smooth_1800;
+        int32_t m12;
+        int32_t m18;
+        int32_t n12;
+        int32_t n18;
+        int32_t d0;
+        int32_t d1;
+        const uint8_t bit = (uint8_t)(i & 1u);
+        expected[expected_count++] = bit;
+        audio_feed_bit(&state, bit, &phase, &capture);
+        if (i < 16u) {
+            m12 = tdcsrx_audio_magnitude(state.corr_1200_i,
+                                         state.corr_1200_q, &b12);
+            m18 = tdcsrx_audio_magnitude(state.corr_1800_i,
+                                         state.corr_1800_q, &b18);
+            n12 = m12 * state.smooth_1800;
+            n18 = m18 * state.smooth_1200;
+            d0 = n18 * 3 - n12 * 2;
+            d1 = n18 * 2 - n12 * 3;
+            fprintf(stderr, "symbol%u bit=%u mag=%ld/%ld base=%ld/%ld diff=%ld/%ld\n",
+                    i, bit, (long)m12, (long)m18, (long)b12, (long)b18,
+                    (long)d0, (long)d1);
+        }
     }
 
     for (i = 0u; i < 32u; ++i) {
