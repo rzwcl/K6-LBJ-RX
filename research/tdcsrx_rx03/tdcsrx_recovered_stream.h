@@ -52,4 +52,6 @@ tdcsrx_stream_event_t tdcsrx_stream_feed_bit(tdcsrx_stream_state_t *state,
 }
 #endif
 
+void tdcsrx_stream_release_sync(tdcsrx_stream_state_t *state);
+
 #endif /* TDCSRX_RECOVERED_STREAM_H */

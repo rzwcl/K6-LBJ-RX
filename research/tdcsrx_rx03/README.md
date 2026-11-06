@@ -5,6 +5,7 @@
 ## 文件
 
 - `tdcsrx_recovered_protocol.c/.h`：45 字节应用帧验证、32 字节 TDCS 业务负载字段提取、CRC-16/XMODEM，以及从原版指令恢复的 BCH(26,16) 余数和单比特纠错逻辑。
+- `tdcsrx_recovered_receiver.c/.h`：两条独立的 26-bit BCH 解码路径、45-byte 应用帧组装和 CRC 校验回调。
 - `tdcsrx_recovered_stream.c/.h`：从原版同步/码字收集例程恢复的 31/32 位同步窗口、极性判断、最多 2 bit 同步误差，以及 26 bit MSB-first 码字收集。
 - `test_tdcsrx_recovered.c`：仅使用合成数据的主机端测试，不依赖用户录音或 K6 硬件。
 - `TDCSRX_REVERSE_ENGINEERING.md`、`TDCSRX_RX03_SIGNAL_PATH.md`：原始二进制来源、FAP1/API 信息、寄存器配置、采样/解调调用链、帧结构和字段偏移。
@@ -29,3 +30,17 @@ make clean test
 - 完整 UI、按键和设置逻辑。
 
 因此，这些文件目前只能验证已恢复的协议层和同步层，**不能独立接收射频，不能直接作为 K6 固件，也不能声称是原作者完整源码**。后续 K6 适配必须继续依据原版机器码恢复接收链，并单独验证 DP32G030/BK4819 的硬件采集接口；不再沿用已清理的实验性 `FirmwareOverlay` 解码器。
+
+
+## Dual stream recovery status
+
+The original DSP contains two independent symbol slicers and two frame-collector
+states. Their weights are `0x0302` (1200:2 / 1800:3) and `0x0203`
+(1200:3 / 1800:2). The new `tdcsrx_recovered_receiver.c/.h` reconstructs the
+post-bit decision layer for both collector paths: rolling sync, 26-bit BCH
+words, first-word `0x0C2B` validation, expected word count
+`(frame[1]+3)>>1`, 45-byte frame assembly and CRC-gated callback.
+
+The exact I/Q magnitude helper at code offset `0x0198` and the sample-to-bit
+fixed-point detector remain unimplemented. This receiver module is a recovered
+post-demodulation frame layer, not a complete DSP or K6 receiver.

@@ -63,6 +63,19 @@ void tdcsrx_stream_init(tdcsrx_stream_state_t *state)
     state->inverted = false;
 }
 
+void tdcsrx_stream_release_sync(tdcsrx_stream_state_t *state)
+{
+    if (state == NULL)
+        return;
+
+    /* The target clears the acquired-sync flag after a rejected/completed frame.
+       Preserve the rolling 32-bit window so sync search can resume immediately. */
+    state->codeword_shift = 0u;
+    state->codeword_bit_count = 0u;
+    state->synchronized = false;
+    state->inverted = false;
+}
+
 tdcsrx_stream_event_t tdcsrx_stream_feed_bit(tdcsrx_stream_state_t *state,
                                              uint8_t input_bit,
                                              uint16_t *data_word,
