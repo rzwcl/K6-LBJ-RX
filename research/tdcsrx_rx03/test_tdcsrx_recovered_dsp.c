@@ -102,7 +102,7 @@ static void audio_feed_bit(tdcsrx_audio_state_t *state,
                            audio_capture_t *capture)
 {
     unsigned int sample_index;
-    const uint8_t phase_step = bit ? 4u : 6u; /* 1200 Hz for 1, 1800 Hz for 0 */
+    const uint8_t phase_step = bit ? 6u : 4u; /* 1800 Hz for 1, 1200 Hz for 0 */
 
     for (sample_index = 0u; sample_index < 8u; ++sample_index) {
         const uint16_t sample = (uint16_t)(2048 +
@@ -175,6 +175,15 @@ static void test_full_9600_hz_audio_to_frame(void)
                         &phase, &capture);
     }
 
+    printf("audio diagnostics: calls=%u paths=0x%X smooth=%ld/%ld diff=%ld/%ld sync=%u/%u bits=%u/%u\n",
+           capture.calls, capture.path_mask,
+           (long)state.smooth_1200, (long)state.smooth_1800,
+           (long)state.discriminator[0].previous_difference,
+           (long)state.discriminator[1].previous_difference,
+           state.receiver.path[0].stream.synchronized,
+           state.receiver.path[1].stream.synchronized,
+           state.receiver.path[0].stream.codeword_bit_count,
+           state.receiver.path[1].stream.codeword_bit_count);
     assert(capture.calls >= 1u);
     assert(capture.last_message.train_number == 0u);
     assert(capture.last_message.received_crc ==

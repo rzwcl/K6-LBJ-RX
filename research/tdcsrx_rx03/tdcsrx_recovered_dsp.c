@@ -205,8 +205,10 @@ static void update_discriminator(tdcsrx_audio_state_t *state,
     uint8_t current_bit;
     uint8_t previous_bit;
 
-    positive_term = wrap_mul_i32(normalized_1200, lane->weight_1200);
-    negative_term = wrap_mul_i32(normalized_1800, lane->weight_1800);
+    /* Target instruction order: (1800 * baseline1200 * weight1800)
+       minus (1200 * baseline1800 * weight1200). */
+    positive_term = wrap_mul_i32(normalized_1800, lane->weight_1800);
+    negative_term = wrap_mul_i32(normalized_1200, lane->weight_1200);
     difference = wrap_sub_i32(positive_term, negative_term);
 
     /* The target's ASRS/SUBS/LSRS sequence is exactly (difference > 0). */
