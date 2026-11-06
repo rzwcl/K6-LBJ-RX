@@ -255,11 +255,47 @@ static void test_full_9600_hz_audio_to_frame(void)
            capture.last_message.calculated_crc);
 }
 
+
+static void test_single_tone_discriminator_probe(void)
+{
+    unsigned int tone;
+    for (tone = 0u; tone < 2u; ++tone) {
+        tdcsrx_audio_state_t state;
+        audio_capture_t capture;
+        uint8_t phase = 0u;
+        const uint8_t phase_step = tone == 0u ? 4u : 6u;
+        unsigned int sample;
+        unsigned int ones0 = 0u, ones1 = 0u;
+
+        memset(&capture, 0, sizeof(capture));
+        tdcsrx_audio_init(&state);
+        for (sample = 0u; sample < 8000u; ++sample) {
+            const uint16_t adc = (uint16_t)(2048 +
+                kSyntheticSine32[phase & 31u]);
+            tdcsrx_audio_feed_sample_traced(&state, adc,
+                audio_symbol_callback, &capture, NULL, NULL);
+            phase = (uint8_t)((phase + phase_step) & 31u);
+        }
+        for (sample = 100u; sample < capture.bit_count[0]; ++sample)
+            ones0 += capture.bits[0][sample] != 0u;
+        for (sample = 100u; sample < capture.bit_count[1]; ++sample)
+            ones1 += capture.bits[1][sample] != 0u;
+        fprintf(stderr, "single-tone probe freq=%u: symbols=%u/%u ones=%u/%u baseline=%ld/%ld diff=%ld/%ld\n",
+                tone == 0u ? 1200u : 1800u,
+                capture.bit_count[0], capture.bit_count[1],
+                ones0, ones1,
+                (long)state.smooth_1200, (long)state.smooth_1800,
+                (long)state.discriminator[0].previous_difference,
+                (long)state.discriminator[1].previous_difference);
+    }
+}
+
 int main(void)
 {
     test_magnitude_198();
     test_audio_state_layout_and_initialization();
     test_sample_loop_updates_independent_states();
+    test_single_tone_discriminator_probe();
     test_full_9600_hz_audio_to_frame();
 
     puts("TDCSRX recovered 9.6 kHz DSP tests: PASS");
