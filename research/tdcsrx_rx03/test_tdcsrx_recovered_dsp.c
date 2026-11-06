@@ -78,6 +78,8 @@ typedef struct {
     unsigned int calls;
     unsigned int path_mask;
     tdcsrx_message_t last_message;
+    uint8_t bits[2][2048];
+    unsigned int bit_count[2];
 } audio_capture_t;
 
 static const int16_t kSyntheticSine32[32] = {
@@ -86,6 +88,13 @@ static const int16_t kSyntheticSine32[32] = {
        0, -117, -230, -333, -424, -499, -554, -587,
     -600, -587, -554, -499, -424, -333, -230, -117
 };
+
+static void audio_symbol_callback(void *context, uint8_t path, uint8_t bit)
+{
+    audio_capture_t *capture = (audio_capture_t *)context;
+    if (path < 2u && capture->bit_count[path] < 2048u)
+        capture->bits[path][capture->bit_count[path]++] = bit;
+}
 
 static void audio_capture_callback(void *context, uint8_t path,
                                    const tdcsrx_message_t *message)
@@ -107,8 +116,9 @@ static void audio_feed_bit(tdcsrx_audio_state_t *state,
     for (sample_index = 0u; sample_index < 8u; ++sample_index) {
         const uint16_t sample = (uint16_t)(2048 +
             kSyntheticSine32[*phase & 31u]);
-        tdcsrx_audio_feed_sample(state, sample,
-                                 audio_capture_callback, capture);
+        tdcsrx_audio_feed_sample_traced(state, sample,
+                                        audio_symbol_callback, capture,
+                                        audio_capture_callback, capture);
         *phase = (uint8_t)((*phase + phase_step) & 31u);
     }
 }
@@ -139,6 +149,8 @@ static void test_full_9600_hz_audio_to_frame(void)
     uint8_t frame[TDCSRX_FRAME_SIZE];
     uint8_t padded[TDCSRX_RX_FRAME_BUFFER_SIZE];
     uint8_t phase = 0u;
+    uint8_t expected[64u + 32u + TDCSRX_RX_FRAME_WORD_MAX * TDCSRX_CODEWORD_BITS];
+    unsigned int expected_count = 0u;
     unsigned int i;
     uint16_t crc;
 
@@ -160,30 +172,69 @@ static void test_full_9600_hz_audio_to_frame(void)
     memcpy(padded, frame, sizeof(frame));
 
     /* Alternating mark/space warm-up, followed by the recovered target sync. */
-    for (i = 0u; i < 64u; ++i)
+    for (i = 0u; i < 64u; ++i) {
+        expected[expected_count++] = (uint8_t)(i & 1u);
         audio_feed_bit(&state, (uint8_t)(i & 1u), &phase, &capture);
+    }
 
-    for (i = 0u; i < 32u; ++i)
-        audio_feed_bit(&state,
-            (uint8_t)((TDCSRX_SYNC_WORD >> (31u - i)) & 1u),
-            &phase, &capture);
+    for (i = 0u; i < 32u; ++i) {
+        const uint8_t bit =
+            (uint8_t)((TDCSRX_SYNC_WORD >> (31u - i)) & 1u);
+        expected[expected_count++] = bit;
+        audio_feed_bit(&state, bit, &phase, &capture);
+    }
 
     for (i = 0u; i < sizeof(padded); i += 2u) {
         const uint16_t data =
             (uint16_t)(((uint16_t)padded[i] << 8) | padded[i + 1u]);
-        audio_feed_word(&state, make_audio_test_codeword(data),
-                        &phase, &capture);
+        const uint32_t codeword = make_audio_test_codeword(data);
+        unsigned int bit;
+        for (bit = 0u; bit < TDCSRX_CODEWORD_BITS; ++bit)
+            expected[expected_count++] =
+                (uint8_t)((codeword >> (TDCSRX_CODEWORD_BITS - 1u - bit)) & 1u);
+        audio_feed_word(&state, codeword, &phase, &capture);
     }
 
-    fprintf(stderr, "audio diagnostics: calls=%u paths=0x%X smooth=%ld/%ld diff=%ld/%ld sync=%u/%u bits=%u/%u\n",
+    fprintf(stderr, "audio diagnostics: calls=%u paths=0x%X symbols=%u/%u smooth=%ld/%ld diff=%ld/%ld sync=%u/%u\n",
            capture.calls, capture.path_mask,
+           capture.bit_count[0], capture.bit_count[1],
            (long)state.smooth_1200, (long)state.smooth_1800,
            (long)state.discriminator[0].previous_difference,
            (long)state.discriminator[1].previous_difference,
            state.receiver.path[0].stream.synchronized,
-           state.receiver.path[1].stream.synchronized,
-           state.receiver.path[0].stream.codeword_bit_count,
-           state.receiver.path[1].stream.codeword_bit_count);
+           state.receiver.path[1].stream.synchronized);
+    {
+        unsigned int path, inversion, offset;
+        unsigned int best_errors = 0xffffffffu, best_overlap = 0u;
+        unsigned int best_path = 0u, best_inversion = 0u, best_offset = 0u;
+        for (path = 0u; path < 2u; ++path) {
+            for (inversion = 0u; inversion < 2u; ++inversion) {
+                for (offset = 0u; offset < capture.bit_count[path]; ++offset) {
+                    unsigned int overlap = expected_count;
+                    unsigned int errors = 0u;
+                    unsigned int k;
+                    if (offset + overlap > capture.bit_count[path])
+                        overlap = capture.bit_count[path] - offset;
+                    if (overlap < expected_count / 2u)
+                        continue;
+                    for (k = 0u; k < overlap; ++k) {
+                        if ((capture.bits[path][offset + k] ^ inversion) != expected[k])
+                            ++errors;
+                    }
+                    if (errors * best_overlap < best_errors * overlap) {
+                        best_errors = errors;
+                        best_overlap = overlap;
+                        best_path = path;
+                        best_inversion = inversion;
+                        best_offset = offset;
+                    }
+                }
+            }
+        }
+        fprintf(stderr, "bit compare: expected=%u best path=%u invert=%u offset=%u overlap=%u errors=%u\n",
+                expected_count, best_path, best_inversion, best_offset,
+                best_overlap, best_errors);
+    }
     fprintf(stderr, "sync shift=%08lX/%08lX phase=%08lX/%08lX corr=%ld,%ld,%ld,%ld\n",
             (unsigned long)state.receiver.path[0].stream.sync_shift,
             (unsigned long)state.receiver.path[1].stream.sync_shift,

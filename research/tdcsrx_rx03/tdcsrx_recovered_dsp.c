@@ -194,6 +194,8 @@ static void update_discriminator(tdcsrx_audio_state_t *state,
                                  unsigned int path_index,
                                  int32_t normalized_1200,
                                  int32_t normalized_1800,
+                                 tdcsrx_symbol_callback_t symbol_callback,
+                                 void *symbol_context,
                                  tdcsrx_frame_callback_t callback,
                                  void *context)
 {
@@ -226,6 +228,8 @@ static void update_discriminator(tdcsrx_audio_state_t *state,
 
     if (phase >= 0x10000) {
         phase = wrap_sub_i32(phase, 0x10000);
+        if (symbol_callback != NULL)
+            symbol_callback(symbol_context, (uint8_t)path_index, current_bit);
         tdcsrx_receiver_feed_bit(&state->receiver,
                                  (uint8_t)path_index,
                                  current_bit,
@@ -254,10 +258,12 @@ void tdcsrx_audio_init(tdcsrx_audio_state_t *state)
     tdcsrx_receiver_init(&state->receiver);
 }
 
-void tdcsrx_audio_feed_sample(tdcsrx_audio_state_t *state,
-                              uint16_t adc_sample,
-                              tdcsrx_frame_callback_t callback,
-                              void *context)
+void tdcsrx_audio_feed_sample_traced(tdcsrx_audio_state_t *state,
+                                     uint16_t adc_sample,
+                                     tdcsrx_symbol_callback_t symbol_callback,
+                                     void *symbol_context,
+                                     tdcsrx_frame_callback_t callback,
+                                     void *context)
 {
     int32_t filtered;
     int32_t magnitude_1200;
@@ -289,9 +295,18 @@ void tdcsrx_audio_feed_sample(tdcsrx_audio_state_t *state,
     normalized_1800 = wrap_mul_i32(magnitude_1800, state->smooth_1200);
 
     update_discriminator(state, 0u, normalized_1200, normalized_1800,
-                         callback, context);
+                         symbol_callback, symbol_context, callback, context);
     update_discriminator(state, 1u, normalized_1200, normalized_1800,
-                         callback, context);
+                         symbol_callback, symbol_context, callback, context);
+}
+
+void tdcsrx_audio_feed_sample(tdcsrx_audio_state_t *state,
+                              uint16_t adc_sample,
+                              tdcsrx_frame_callback_t callback,
+                              void *context)
+{
+    tdcsrx_audio_feed_sample_traced(state, adc_sample, NULL, NULL,
+                                    callback, context);
 }
 
 /* These checks pin this C state layout to the original 0x108-byte block. */

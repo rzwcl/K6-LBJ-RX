@@ -13,6 +13,10 @@ extern "C" {
 #define TDCSRX_DSP_SAMPLE_RATE 9600u
 #define TDCSRX_DSP_BIT_RATE 1200u
 
+typedef void (*tdcsrx_symbol_callback_t)(void *context,
+                                         uint8_t path_index,
+                                         uint8_t bit);
+
 typedef struct {
     int32_t previous_difference;
     int32_t phase;
@@ -67,6 +71,14 @@ void tdcsrx_audio_feed_sample(tdcsrx_audio_state_t *state,
                               uint16_t adc_sample,
                               tdcsrx_frame_callback_t callback,
                               void *context);
+
+/* Test/diagnostic variant: observe each target slicer output before collection. */
+void tdcsrx_audio_feed_sample_traced(tdcsrx_audio_state_t *state,
+                                     uint16_t adc_sample,
+                                     tdcsrx_symbol_callback_t symbol_callback,
+                                     void *symbol_context,
+                                     tdcsrx_frame_callback_t frame_callback,
+                                     void *frame_context);
 
 #ifdef __cplusplus
 }
