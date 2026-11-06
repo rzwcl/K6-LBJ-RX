@@ -175,7 +175,7 @@ static void test_full_9600_hz_audio_to_frame(void)
                         &phase, &capture);
     }
 
-    printf("audio diagnostics: calls=%u paths=0x%X smooth=%ld/%ld diff=%ld/%ld sync=%u/%u bits=%u/%u\n",
+    fprintf(stderr, "audio diagnostics: calls=%u paths=0x%X smooth=%ld/%ld diff=%ld/%ld sync=%u/%u bits=%u/%u\n",
            capture.calls, capture.path_mask,
            (long)state.smooth_1200, (long)state.smooth_1800,
            (long)state.discriminator[0].previous_difference,
