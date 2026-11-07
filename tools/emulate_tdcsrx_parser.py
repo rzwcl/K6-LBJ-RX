@@ -144,7 +144,13 @@ def execute_parser(code: bytes, train_number: int) -> tuple[int, bytes, bytes]:
         0x06C0, 0x06C2, 0x06C6, 0x06C8, 0x06CE, 0x06D0,
         0x06D6, 0x06D8, 0x06DC, 0x06E0, 0x06E2, 0x06E6,
         0x06E8, 0x06EE, 0x06F0, 0x06F4, 0x06F6, 0x07E4,
-        0x07E6, 0x07E8, 0x07EA,
+        0x07E6, 0x07E8, 0x07EA, 0x0700, 0x0702, 0x0704,
+        0x0708, 0x070A, 0x0710, 0x0712, 0x0714, 0x0720,
+        0x072A, 0x0730, 0x0740, 0x0750, 0x0760, 0x0770,
+        0x0780, 0x0790, 0x0798, 0x079A, 0x079C, 0x07A0,
+        0x07A2, 0x07A4, 0x07A6, 0x07A8, 0x07AA, 0x07B0,
+        0x07B2, 0x07B4, 0x07B6, 0x07B8, 0x07BA, 0x07BC,
+        0x07BE,
     }
     trace_rows = []
 
@@ -157,13 +163,20 @@ def execute_parser(code: bytes, train_number: int) -> tuple[int, bytes, bytes]:
                 machine.reg_read(UC_ARM_REG_R3),
                 machine.reg_read(UC_ARM_REG_R4),
                 machine.reg_read(UC_ARM_REG_R5),
+                machine.reg_read(UC_ARM_REG_R2),
+                machine.reg_read(UC_ARM_REG_R6),
+                machine.reg_read(UC_ARM_REG_R7),
             ))
 
     uc.hook_add(UC_HOOK_CODE, trace_hook)
     uc.emu_start(PARSER_ENTRY | 1, RETURN_ADDRESS, count=20000)
     if train_number == 319:
-        for offset, r1, r3, r4, r5 in trace_rows:
-            print(f"  TRACE offset=0x{offset:04X} r1={r1} r3={r3} r4=0x{r4:08X} r5=0x{r5:08X}")
+        for offset, r1, r3, r4, r5, r2, r6, r7 in trace_rows:
+            print(
+                f"  TRACE offset=0x{offset:04X} r1={r1} r2=0x{r2:08X} "
+                f"r3={r3} r4=0x{r4:08X} r5=0x{r5:08X} "
+                f"r6=0x{r6:08X} r7=0x{r7:08X}"
+            )
     pc = uc.reg_read(UC_ARM_REG_PC) & 0xFFFFFFFE
     if pc != RETURN_ADDRESS:
         raise RuntimeError(f"parser failed to return: PC=0x{pc:08X}")
