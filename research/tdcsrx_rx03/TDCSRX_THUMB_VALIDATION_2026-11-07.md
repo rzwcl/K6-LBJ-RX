@@ -90,12 +90,61 @@ Likely boundary to investigate: the field WAV was captured through a sound-card/
 - Do not use a guessed amplitude correction in production firmware.
 - Continue to treat the K6 BK4819 FIFO adapter as unverified until raw `REG_02/0B/5D/5E/5F` capture data establish sync stripping, byte order, bit order, polarity and FIFO length behaviour.
 
+## 4. Exact 40-byte application record ABI
+
+The original callback at code offset 0x0594 copies exactly 40 bytes from the
+parser's compact output into the application current-record area. This ABI is
+now recovered from every parser store and checked against direct execution of
+the Thumb parser by tools/emulate_tdcsrx_parser.py.
+
+Key distinction: the train-number quotient calculated by the parser is an
+internal leading-digit validity check, not an output index. At code offset
+0x06FA, R1 is that quotient; quotient 9 is rejected. For train 319 the
+original Thumb parser reports quotient 3, divisor 100, remainder 19. The
+quotient is subsequently overwritten: at 0x072A R1 is set to literal 1.
+That fixed value is used by both apparently dynamic copies:
+- frame[0x28] -> record[0x12], frame[0x29] -> record[0x13];
+- frame[0x26] -> record[0x1F], frame[0x27] -> record[0x20].
+The separate record byte +0x25 is also set to 1. It does not contain the
+leading-digit quotient.
+
+Direct Thumb parser tests cover quotient 0, 1, 3, 8 and rejected 9; they
+inject distinct markers into frame[0x27] and frame[0x29], test both header
+variants, and verify that output bytes +0x26..+0x27 remain untouched.
+Successful original-parser run: Actions run 42369257863.
+
+The C side now defines tdcsrx_app_record_t as an exact 40-byte structure made
+only of byte arrays and byte fields (no compiler-dependent padding), plus
+tdcsrx_build_app_record(). The converter validates the original 45-byte
+header and CRC, builds the record from the frame, and deterministically zeros
+the two bytes that the original parser leaves unwritten. It remains separate
+from tdcsrx_message_t, which is a host diagnostic structure and not the
+original UI callback ABI.
+
+Host tests cover every mapped field, both header variants, all-FF mileage
+sentinel, the two fixed index-one copies, bad CRC rejection and the zeroed
+untouched tail. Successful run: Actions run 42369594606.
+
 ## 5. Next implementation steps
 
-1. Finish the original 40-byte application record ABI map. The host `tdcsrx_message_t` is only a diagnostic structure and must not be passed directly to the recovered original UI callback.
-2. Add an explicit conversion from the 45-byte validated frame to the exact 40-byte target application record after all dynamic parser offsets are resolved.
-3. Complete the BK4819 FFSK FIFO raw-capture experiment on K6 or with a controllable conducted source.
-4. Only after FIFO serialization is known, implement the separate receive-only TDCS adapter in the LOSEHU K6 firmware tree.
-5. Keep LBJRX as a separate full-firmware target using the original `lbj_rx_bit()` decoder; do not merge the two receivers or alter the user's Bootloader.
+1. Finish reverse-engineering display labels and formatting for auxiliary
+   record bytes +0x12..+0x13 and +0x1F..+0x21, plus the remaining settings/key
+   behavior. Do not infer field semantics from raw values alone.
+2. Capture native K6 BK4819 registers and raw FIFO words under a controlled
+   457.550 MHz FFSK source: REG_02/0B/5D/5E/5F, exact sync stripping, byte/bit
+   order, polarity, receive length, partial-word drain and re-acquisition.
+3. Validate whether the original 2:3/3:2 thresholds work on the native K6 ADC
+   path. The 1:1 sound-card WAV experiment remains diagnostic-only; original
+   binary defaults must not be changed without native signal evidence.
+4. Once FIFO serialization is known, implement the receive-only TDCSRX adapter
+   and its UI in a separate full LOSEHU K6 firmware build.
+5. Keep LBJRX as a separate full-firmware target using the original
+   lbj_rx_bit() decoder; do not merge the two receivers or alter the user's
+   existing multi-firmware Bootloader.
 
-**Status:** original sample-DSP C state translation is now instruction-level matched against the FAP1 on the pinned input. The original app callback ABI is partially recovered. The K6 hardware path, exact 40-byte record conversion, complete K6 firmware and real-radio verification remain unfinished.
+**Status:** the original sample-DSP C translation is instruction-level matched
+against the FAP1 binary for the pinned recording; both bit collectors match
+exactly. The original 40-byte record ABI and a separate C conversion routine
+are now host-tested. K6 FIFO hardware, UI semantics and both complete firmware
+targets remain unfinished. No flashable TDCSRX-K6 image exists.
+
