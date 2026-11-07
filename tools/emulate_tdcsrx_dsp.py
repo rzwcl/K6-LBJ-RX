@@ -277,7 +277,7 @@ def main() -> int:
 
     bit_status = 0
     for path_index in range(2):
-        c_bit_path = Path(f"research/tdcsrx_rx03/tdcsrx_path{path_index}_scale_100.bits")
+        c_bit_path = Path(f"research/tdcsrx_rx03/tdcsrx_path{path_index}_original_scale_100.bits")
         if c_bit_path.exists():
             c_bits = c_bit_path.read_text(encoding="ascii").strip()
             asm_bits = "".join(emitted[path_index])
