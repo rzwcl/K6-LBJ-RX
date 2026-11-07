@@ -114,7 +114,7 @@ static void audio_feed_bit(tdcsrx_audio_state_t *state,
     const uint8_t phase_step = bit ? 4u : 6u; /* standard: 1200 Hz for 1, 1800 Hz for 0 */
 
     for (sample_index = 0u; sample_index < 8u; ++sample_index) {
-        const int amplitude = bit ? 650 : 1000; /* sweep the tone ratio across the 2:3 decision boundary */
+        const int amplitude = bit ? 1000 : 650; /* 1200 Hz mark must exceed the 2:3 / 3:2 slicer boundary */
         const uint16_t sample = (uint16_t)(2048 +
             (kSyntheticSine32[*phase & 31u] * amplitude) / 600);
         tdcsrx_audio_feed_sample_traced(state, sample,
@@ -192,8 +192,8 @@ static void test_full_9600_hz_audio_to_frame(void)
                                          state.corr_1800_q, &b18);
             n12 = m12 * state.smooth_1800;
             n18 = m18 * state.smooth_1200;
-            d0 = n18 * 3 - n12 * 2;
-            d1 = n18 * 2 - n12 * 3;
+            d0 = n12 * 2 - n18 * 3;
+            d1 = n12 * 3 - n18 * 2;
             fprintf(stderr, "symbol%u bit=%u mag=%ld/%ld base=%ld/%ld diff=%ld/%ld\n",
                     i, bit, (long)m12, (long)m18, (long)b12, (long)b18,
                     (long)d0, (long)d1);
