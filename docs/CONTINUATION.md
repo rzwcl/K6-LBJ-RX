@@ -465,3 +465,85 @@ Actions run 42354887689 成功：
 5. 完成后才从干净的 LOSEHU 0.13.2 固件树建立两个独立完整K6固件目标，保留用户10条RAM历史/UI/频率和退出要求，无TX、无EEPROM写入、不修改Bootloader，完成≤60KiB与实机测试。
 
 **当前仍没有可刷入的LBJRX-K6或TDCSRX-K6完整BIN。** DSP机器码级匹配不等于BK4819 FIFO已适配，更不等于K6无线接收完成。
+
+
+## 2026-11-07 第八轮进展：原版 TDCSRX 40-byte callback ABI 已恢复并加入 C 转换
+
+### 1. 原 Thumb parser 的 quotient 含义纠正
+
+此前 parser 反汇编报告把寄存器 R1 的十进制校验 quotient 误当成后续记录写入的动态索引。现在通过原版 FAP1 的 Unicorn 执行钉死：
+
+- code offset 0x06FA 时，R1=leading-digit quotient，R3=remainder，R4=divisor。
+- 该 quotient 是对 train_number 的首位十进制数校验；quotient=9 时 parser reject。
+- 验证样本：
+  - train 0：q=0 / divisor=1 / remainder=0，accept。
+  - train 1：q=1 / divisor=1 / remainder=0，accept。
+  - train 319：q=3 / divisor=100 / remainder=19，accept。
+  - train 1234：q=1 / divisor=1000 / remainder=234，accept。
+  - train 8765432：q=8 / divisor=1,000,000 / remainder=765432，accept。
+  - train 9123456：q=9 / divisor=1,000,000 / remainder=123456，reject。
+- offset 0x072A 随后把 R1 重新设为常量1。两组看起来像动态索引的拷贝均使用这个固定值：
+  - frame[0x28] -> record[0x12]，frame[0x29] -> record[0x13]；
+  - frame[0x26] -> record[0x1F]，frame[0x27] -> record[0x20]。
+- record[0x25] 也写入常量1，不是 quotient。
+- record[0x24] 为头部变体标志：FF FF FF = 1；1F 8C 30 = 0。
+- record[0x26..0x27] 原 parser 不写入。模拟器用0xCC填充输出缓冲，证明该区域保持原值。
+
+### 2. 新增原版 40-byte record ABI 与 C 转换函数
+
+新增到 research/tdcsrx_rx03：
+
+- tdcsrx_recovered_protocol.h：定义 tdcsrx_app_record_t，全部多字节数据用明确的 little-endian byte arrays，静态编译断言 sizeof=40，不依赖编译器自然对齐。
+- tdcsrx_recovered_protocol.c：新增 tdcsrx_build_app_record(frame, length, out)，先复用原45-byte frame parser验证头部和CRC，再构建原UI callback用的40-byte record。
+- record[0x26..0x27] 原 binary 留作未写状态；C 转换显式清0，保证传给 UI 的记录不含旧RAM脏数据。这是有意的安全确定化，不声称原 binary 也初始化了它们。
+- tdcsrx_message_t 仍仅是 host diagnostics 结构，包含 raw payload/frame/CRC；严禁直接作为原版40-byte UI callback record传递。
+- test_tdcsrx_recovered.c 新增 ABI测试：两种header、所有固定offset、固定index-one复制、FF FF FF mileage absent、坏CRC拒绝、reserved tail清零。
+
+### 3. Thumb 原始 parser 和 C host test
+
+- tools/emulate_tdcsrx_parser.py 已更新，直接执行原FAP1 parser，输出实际 quotient/remainder/divisor，不再把 record[0x25]误标为q。
+- 使用distinct markers验证 frame[0x27] 与 frame[0x29] 被复制到固定 record offsets +0x20 和 +0x13；同时测试两种 header variant、q=9 reject 和40-byte output guard。
+- 原版 parser / 真实WAV / Thumb DSP工作流 run 42369257863：success。
+- 新增C ABI host test run 42369594606：success。
+- 最新协议/record/frame测试 run 42369943707：success。
+- 最新 TDCSRX recovered-source package run 42369943761：success。
+- 最近真实WAV DSP与参考比对 run 42369846390：success。
+- CI明确验证：BCH/sync/frame/parser/CRC、dual collector、40-byte ABI转换通过。仍没有BK4819实际FIFO数据或K6实机结果。
+
+### 4. 本轮相关提交
+
+| Commit | 内容 |
+|---|---|
+| b72246060d8e2017b133d71f3883703c71859686 | 定义原版40-byte tdcsrx_app_record_t |
+| eb0eb2b953b956225d0b2b3e577497b0d9f3129f | 实现 tdcsrx_build_app_record() |
+| a2473978360017d3b86ccc80ea62312b92fd5fb2 | 增加40-byte应用记录C主机测试 |
+| 45023a4bba8ea147db5e84544f060254b175e5af | 修正并验证原Thumb parser quotient和固定索引模拟测试 |
+| bdc0264443e0e9f1be656c732f588f605ad8862c | 完成原版40-byte ABI逆向映射说明 |
+| 0c52f11514520e4a8130c37e6fe116d3e91a33df | 重写TDCSRX信号路径状态报告，消除旧DSP未验证结论 |
+| fafbdb33cffb70bba7dca3ed84b0aa5f817b73e9 | 更新Thumb验证和ABI状态 |
+| a257264278646477e337d0838ac349b07838560f | 将parser报告字段名改为fixed index-one copies |
+| 4ee5df346927e945d7e6e83fe3ca8c626f0d8449 | 更新README的TDCSRX进度 |
+| 6be479cfdd0492b3076aba6bda028a569790f89f | 标注早期真实WAV诊断文档已被机器码级结果取代 |
+
+本节写入前的 main HEAD 为 6be479cfdd0492b3076aba6bda028a569790f89f；如其后又提交了后续修正文档，应以 main 实时HEAD为准。
+
+### 5. 当前文件状态
+
+- research/tdcsrx_rx03/tdcsrx_recovered_protocol.h/.c：含 frame parser、BCH、CRC和独立40-byte app-record转换。
+- research/tdcsrx_rx03/test_tdcsrx_recovered.c：覆盖record ABI。
+- tools/emulate_tdcsrx_parser.py：原 Thumb parser直接执行，记录 quotient/remainder/divisor，并验证fixed index-one复制。
+- research/tdcsrx_rx03/TDCSRX_REVERSE_ENGINEERING.md：原始40-byte record完整map。
+- research/tdcsrx_rx03/TDCSRX_RX03_SIGNAL_PATH.md：当前已验证的DSP、dual collector、ABI与K6硬件未完成项。
+- research/tdcsrx_rx03/TDCSRX_THUMB_VALIDATION_2026-11-07.md：逐样本/逐位Thumb验证及外部声卡1:1诊断边界。
+- README.md：更新当前TDCSRX成熟度。
+- research/tdcsrx_rx03/TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md：历史记录，开头已标注旧“C mismatch”结论被后续Thumb逐项对照取代。
+
+### 6. 下一步
+
+1. 继续对原FAP1的 display/UI formatter 函数做静态逆向，确认 record[0x12..0x13]、[0x1F..0x21]、station/track相关字段的实际中文显示语义、单位和条件分支。
+2. 对照 original callback 的全局对象、display hook 和 settings/key handlers，建立 K6页面所需的稳定数据字段，不要把未知字节强行命名。
+3. K6/BK4819端仍需 controlled FFSK source 和 raw FIFO dump：REG_02、REG_0B、REG_5D、REG_5E、REG_5F及事件时序。先解决 sync strip、bit/byte order、polarity、FIFO length、partial word drain/reacquisition，再写生产 adapter。
+4. LBJ保持独立：原版 lbj_rx_bit() 的560-bit residual preamble host test通过，但BK4819 direct-FSK FIFO同样未实测。
+5. 两个接收器分别做独立完整LOSEHU K6固件，保留Bootloader、日常/救援固件、RAM十条历史、既定UI与退出键；RX-only、无EEPROM写入。ARM构建和尺寸检查之后仍须K6实机接收验证。
+
+**当前没有可刷入的LBJRX-K6或TDCSRX-K6完整BIN。当前完成的是原版软件解码/业务记录层的研究和主机验证，不是BK4819硬件移植完成。**
