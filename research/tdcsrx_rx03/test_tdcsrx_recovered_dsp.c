@@ -26,7 +26,7 @@ static void test_magnitude_198(void)
 
     baseline = 100000;
     assert(tdcsrx_audio_magnitude(-1000, 500, &baseline) == 1187);
-    assert(baseline == 99996); /* shared ASRS #5 makes decay baseline>>15 */
+    assert(baseline == 99903); /* falling branch skips the shared ASRS #5 */
 }
 
 static void test_audio_state_layout_and_initialization(void)
