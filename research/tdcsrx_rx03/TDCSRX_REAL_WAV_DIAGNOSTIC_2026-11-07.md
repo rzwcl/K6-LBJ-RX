@@ -1,6 +1,18 @@
 # TDCSRX RX 0.3 — 真实 457.550 MHz WAV DSP 诊断（2026-11-07）
 
 
+> **历史诊断记录（已被后续机器码级验证取代）**
+>
+> 本文件前半部分记录了早期 C DSP 翻译与真实 WAV 对照失败的阶段性结果；
+> 后续通过 Unicorn 直接执行原始 RX 0.3 FAP1 Thumb DSP，证明 C 翻译在同一
+> 16,291 个样本上所有导出状态字段和两路 collector 位流均逐项完全一致
+> （零状态差异、零位差异）。因此早期“C 翻译不匹配”的结论已经作废。
+> 真实 WAV 的原始 2:3 / 3:2 权重仍未通过，而 1:1 仅为外部声卡录音的诊断
+> 实验，不能作为生产配置。当前权威状态请看
+> [TDCSRX_THUMB_VALIDATION_2026-11-07.md](TDCSRX_THUMB_VALIDATION_2026-11-07.md)
+> 和 [TDCSRX_REVERSE_ENGINEERING.md](TDCSRX_REVERSE_ENGINEERING.md)。
+
+
 > **后续状态更正（2026-11-07）：** 本报告早期的“C DSP 尚未匹配原始机器码”结论已被直接 Thumb 执行试验取代。使用 SHA-1 为 `af2142508e75b9ef2d2d2c4963be33ace5ee8523` 的原始 FAP1，Thumb 模拟器执行 `0x0950` 后，C 与原始二进制在 16,291 个采样点的全部导出状态字段均为零差异；两条 collector 位流也逐位完全一致（1,988/1,988 与 1,865/1,865，mismatches=0）。当前真实 WAV 的失败边界是原始固定权重 2:3 / 3:2 不适配这段外部声卡录音，而不是 C 译码器翻译错误。把诊断副本临时改成 1:1 可以解出 X319 / 20 km/h / CRC B27A，但 1:1 不是原版默认值，不应写入生产固件。完整证据：[TDCSRX_THUMB_VALIDATION_2026-11-07.md](TDCSRX_THUMB_VALIDATION_2026-11-07.md)，[Actions run 42354887689](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42354887689)。
 
 ## 输入样本与独立基准
