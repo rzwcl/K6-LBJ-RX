@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "research/tdcsrx_rx03/tdcsrx_recovered_dsp.c"
+      - "research/tdcsrx_rx03/test_tdcsrx_recovered_dsp.c"
       - "research/tdcsrx_rx03/test_tdcsrx_real_wav.c"
       - "research/tdcsrx_rx03/prepare_real_wav.py"
       - "research/tdcsrx_rx03/compare_real_wav_bits.py"
