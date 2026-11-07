@@ -163,36 +163,33 @@ No receiver C code was changed in this documentation update.
 
 ## Real audio comparison
 
-The pinned 457.550 MHz field recording has been added as a reproducible CI
-input (Git blob SHA-1 8fb409ef803a98c17834fa230410c4579b030a83). The
-independent 48 kHz demodulator finds the 31-bit sync at bit 1376 / 1.146667 s.
-The reconstructed 9.6 kHz C DSP currently fails on this real recording too:
-no complete frame, closest sync distances 7..10 bits, and aligned BER about
-0.32..0.40. Further instruction-level sample state tracing is required.
+The pinned 457.550 MHz field recording is a reproducible CI input (Git blob
+SHA-1 `8fb409ef803a98c17834fa230410c4579b030a83`). The independent 48 kHz
+demodulator finds the 31-bit sync at bit 1376 / 1.146667 s. An independent
+9.6 kHz eight-sample quadrature detector also recovers a frame at sync bit 259,
+with valid header/padding and CRC B27A/B27A.
 
+The original C DSP translation was subsequently executed side-by-side with
+the exact original RX 0.3 FAP1 Thumb code under Unicorn. For all 16,291 input
+samples, the exported filter, four I/Q accumulator, two baseline, phase and
+discriminator fields match exactly (zero mismatches, zero maximum absolute
+difference). Both collector-bound bitstreams also match exactly:
+lane A 1,988/1,988 bits and lane B 1,865/1,865 bits, with zero bit errors.
+See [TDCSRX_THUMB_VALIDATION_2026-11-07.md](TDCSRX_THUMB_VALIDATION_2026-11-07.md)
+and [Actions run 42354887689](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42354887689).
 
-## 2026-11-07 — independent reference success vs recovered DSP failure
+The original executable's default weights remain lane A 2:3 and lane B 3:2.
+Those original weights do not decode this external sound-card WAV: sync HD
+7–10, aligned BER about 0.32–0.40, and no frame callbacks. A diagnostic-only
+1:1 override decodes X319 / 20 km/h / CRC B27A. This is not the original
+configuration and must not be promoted to a production default. The likely
+remaining variable is the amplitude response of the external sound-card path
+versus the native receiver ADC path; a K6 capture or controlled signal test
+is needed.
 
-The pinned field WAV can be decoded by a separate, deliberately simple 8-sample
-quadrature-energy reference detector at 9.6 kHz. It finds sync at bit 259 in the
-resampled sample stream and produces a frame with BCH corrections 0, valid
-header/padding, and CRC B27A/B27A. This is a reference/control implementation,
-not the original TDCSRX DSP.
-
-The reconstructed target C path still does not decode the same WAV. Its two
-weighted slicer lanes have substantial bitstream mismatch (sync Hamming distance
-7–10, BER around 0.32–0.40) and no frame callbacks. The standalone synthetic
-ADC-to-frame diagnostic also still fails after trying a wide 8:1 input tone
-amplitude ratio: about 831/825 output symbols for 694 expected bits, and the two
-weighted lanes remain on opposite fixed decisions for the early alternating
-preamble. See CI run 42348715488 and the detailed report
-[TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md](TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md).
-
-Do not substitute the reference detector into the target-recovery module or
-claim the original sample DSP is complete. The next investigation is a per-sample
-instruction-level model of the history ring, I/Q accumulators, 0x0198 baseline
-helper, weighted differences, sign transitions, phase correction, and collector
-call timing.
+The binary-to-C DSP translation is now instruction-level matched. The K6
+audio/FIFO hardware adapter, original 40-byte app-record conversion and
+real-radio behaviour remain unverified.
 
 ## Original application callback ABI (newly recovered)
 
