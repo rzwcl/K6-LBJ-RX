@@ -30,16 +30,18 @@ static void on_symbol(void *context, uint8_t path, uint8_t bit)
     }
 }
 
-static void write_bitstreams(const capture_t *capture, double scale)
+static void write_bitstreams(const capture_t *capture,
+                             const char *profile,
+                             double scale)
 {
     unsigned int path;
-    char filename[80];
+    char filename[96];
 
     for (path = 0u; path < 2u; ++path) {
         FILE *file;
         (void)snprintf(filename, sizeof(filename),
-                       "tdcsrx_path%u_scale_%03u.bits",
-                       path, (unsigned int)(scale * 100.0));
+                       "tdcsrx_path%u_%s_scale_%03u.bits",
+                       path, profile, (unsigned int)(scale * 100.0));
         file = fopen(filename, "wb");
         if (file != NULL) {
             (void)fwrite(capture->bits[path], 1u,
@@ -188,7 +190,7 @@ int main(int argc, char **argv)
         if (trace != NULL)
             fclose(trace);
 
-        write_bitstreams(&capture, scales[scale_index]);
+        write_bitstreams(&capture, "original", scales[scale_index]);
         printf("SUMMARY calls=%u paths=0x%X symbols=%u/%u ones=%u/%u "
                "smooth=%ld/%ld diff=%ld/%ld sync=%u/%u\n",
                capture.calls, capture.path_mask,
@@ -212,10 +214,61 @@ int main(int argc, char **argv)
         }
     }
 
+    if (!found) {
+        tdcsrx_audio_state_t state;
+        capture_t capture;
+        size_t i;
+        const double scale = 0.50;
+
+        /*
+         * Diagnostic-only experiment: preserve every recovered DSP operation,
+         * but neutralise the original 2:3 / 3:2 gain-ratio thresholds.
+         * This is NOT the original TDCSRX RX 0.3 configuration and must not
+         * be used as a production default without target-radio validation.
+         */
+        memset(&capture, 0, sizeof(capture));
+        tdcsrx_audio_init(&state);
+        state.discriminator[0].weight_1200 = 1u;
+        state.discriminator[0].weight_1800 = 1u;
+        state.discriminator[1].weight_1200 = 1u;
+        state.discriminator[1].weight_1800 = 1u;
+        printf("PROFILE balanced-diagnostic weights=1:1/1:1 scale=%.2f\n",
+               scale);
+
+        for (i = 0u; i < sample_count; ++i) {
+            int32_t centred = (int32_t)samples[i] - 2048;
+            int32_t adjusted =
+                2048 + (int32_t)lround((double)centred * scale);
+            if (adjusted < 0)
+                adjusted = 0;
+            else if (adjusted > 4095)
+                adjusted = 4095;
+
+            tdcsrx_audio_feed_sample_traced(
+                &state, (uint16_t)adjusted, on_symbol, &capture,
+                on_frame, &capture);
+        }
+
+        write_bitstreams(&capture, "balanced", scale);
+        if (capture.calls != 0u &&
+            capture.last.train_number == 319u &&
+            capture.last.received_crc == 0xb27au &&
+            capture.last.calculated_crc == 0xb27au &&
+            capture.last.speed_kmh == 20u &&
+            capture.last.locomotive_type == 237u &&
+            capture.last.locomotive_serial == 32u) {
+            found = 1;
+            printf("BALANCED_DIAGNOSTIC_PASS frames=%u pathmask=0x%X "
+                   "train=X319 speed=20 loco=237 serial=0032 crc=B27A\n",
+                   capture.calls, capture.path_mask);
+        }
+    }
+
     free(samples);
     if (!found) {
-        fprintf(stderr, "REAL_WAV_DECODER_FAIL: no frame matched X319, "
-                        "20 km/h, CRC B27A at tested ADC scales\n");
+        fprintf(stderr, "REAL_WAV_PROBE_FAIL: neither original 2:3/3:2 "
+                        "weights nor balanced diagnostic 1:1 weights "
+                        "produced the expected X319 / CRC B27A frame\n");
         return 1;
     }
     return 0;
