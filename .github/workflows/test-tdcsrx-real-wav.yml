@@ -1,0 +1,34 @@
+name: Probe TDCSRX DSP with real 457.550 MHz recording
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "research/tdcsrx_rx03/tdcsrx_recovered_dsp.c"
+      - "research/tdcsrx_rx03/test_tdcsrx_real_wav.c"
+      - "research/tdcsrx_rx03/prepare_real_wav.py"
+      - "research/tdcsrx_rx03/Makefile"
+      - ".github/workflows/test-tdcsrx-real-wav.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  real-wav-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned 457.550 MHz recording
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://raw.githubusercontent.com/rzwcl/450-TAx2/main/2026-10-11_17-30-46_audio_457550000Hz.wav" \
+            --output sample.wav
+      - name: Resample real recording to target ADC rate
+        run: |
+          python3 research/tdcsrx_rx03/prepare_real_wav.py sample.wav sample-9600-adc.bin
+      - name: Run recovered target DSP against real recording
+        run: |
+          make -C research/tdcsrx_rx03 probe-real-wav SAMPLE_BIN="$GITHUB_WORKSPACE/sample-9600-adc.bin"
+      - name: Clean test executables
+        if: always()
+        run: make -C research/tdcsrx_rx03 clean
