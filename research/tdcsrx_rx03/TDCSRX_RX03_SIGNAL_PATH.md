@@ -211,3 +211,32 @@ That object is not ABI-compatible with the original 40-byte application
 record. Do not treat the host message struct as the original UI record. The
 remaining offsets and a portable explicit record-conversion routine are
 still to be reconstructed.
+
+
+## 40-byte application record: partial parser map
+
+The callback's observed copy is 40 bytes, not 44. The parser's initial
+`cmp r1,#0x2c` checks the 45-byte input frame's last-index value (44). The
+parser's fixed output stores map as follows:
+
+- +0x00..+0x03: four transmitted train-prefix bytes;
+- +0x04..+0x07: 32-bit word assembled from 24-bit train number;
+- +0x08..+0x0B: mileage magnitude; sign/presence/direction are separate at +0x19..+0x1B;
+- +0x0C..+0x0D: locomotive serial;
+- +0x0E..+0x0F: total weight;
+- +0x10..+0x11: calculated length;
+- +0x12..+0x13: bytes selected from frame[0x28] and frame[0x28+r1], dynamic meaning unresolved;
+- +0x14..+0x15: 10-bit speed;
+- +0x16..+0x17: locomotive type;
+- +0x18: locomotive role;
+- +0x19..+0x1B: mileage present, negative and direction flags;
+- +0x1C: car count;
+- +0x1D..+0x1E: station-number bytes;
+- +0x1F and +0x1F+r1: bytes sourced from frame[0x26] and frame[0x27], with dynamic overlap/index behavior still unresolved;
+- +0x21: frame[0x2A], business meaning not yet confirmed;
+- +0x22..+0x23: signal-machine and signal-kind codes.
+
+The parser computes r1 by a train-number threshold/subtraction routine. The
+remaining dynamic bytes and any uninitialized byte(s) must be mapped against
+the original display formatter before defining a portable app-record struct.
+The current tdcsrx_message_t remains a host diagnostics type, not this ABI.
