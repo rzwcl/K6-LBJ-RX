@@ -117,7 +117,7 @@ def make_frame(
         raise ValueError("train number must fit in 24 bits")
     frame = bytearray(BASE_FRAME)
     if ff_header:
-        frame[7:10] = b"\\xff\\xff\\xff"
+        frame[7:10] = b"\xff\xff\xff"
     frame[0x12:0x15] = train_number.to_bytes(3, "little")
     if frame_byte_27 is not None:
         frame[0x27] = frame_byte_27 & 0xFF
@@ -297,15 +297,15 @@ def main() -> None:
         raise AssertionError(f"train 319 remainder mismatch: {remainder_319}")
     if int.from_bytes(compact_319[4:8], "little") != 319:
         raise AssertionError("compact record train number mismatch")
-    if compact_319[0x12:0x14] != b"\\x82\\xd2":
+    if compact_319[0x12:0x14] != b"\x82\xd2":
         raise AssertionError("record +0x12..+0x13 must copy frame[0x28..0x29]")
-    if compact_319[0x1F:0x21] != b"\\x0e\\x0e":
+    if compact_319[0x1F:0x21] != b"\x0e\x0e":
         raise AssertionError("record +0x1F..+0x20 must copy frame[0x26..0x27]")
     if compact_319[0x24] != 0:
         raise AssertionError("1F 8C 30 header variant flag must be zero")
     if compact_319[0x25] != 1:
         raise AssertionError("record +0x25 must preserve the target's constant index byte 1")
-    if compact_319[0x26:0x28] != b"\\xcc\\xcc":
+    if compact_319[0x26:0x28] != b"\xcc\xcc":
         raise AssertionError("parser unexpectedly wrote untouched bytes 0x26..0x27")
     if any(value != 0xCC for value in guard_319):
         raise AssertionError("parser wrote beyond the 40-byte compact record")
