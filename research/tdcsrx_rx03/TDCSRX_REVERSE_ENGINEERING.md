@@ -401,12 +401,21 @@ Probe and comparison files:
 - `compare_real_wav_bits.py`
 - workflow `.github/workflows/test-tdcsrx-real-wav.yml`
 
-The next DSP task is to compare the target's per-sample correlator magnitudes,
-baseline states and decision signs against the reference waveform around the
-known sync. For the synthetic case, trace every one of the 8 sample updates
-inside each symbol and log both discriminator sign changes and phase wraps.
-Do not tune audio gain further until ring-history and state-update behaviour
-has been matched instruction by instruction.
+The original `0x0950` DSP has now been run directly from the exact RX 0.3
+FAP1 under Unicorn. On the pinned 16,291-sample real recording, its exported
+state agrees with `tdcsrx_recovered_dsp.c` at every sample: 0 mismatching
+fields and zero maximum absolute difference. The two collector-bound bit
+streams also match exactly (lane A 1,988/1,988; lane B 1,865/1,865; zero
+mismatches). See [TDCSRX_THUMB_VALIDATION_2026-11-07.md](TDCSRX_THUMB_VALIDATION_2026-11-07.md)
+and Actions run `42354887689`.
+
+The remaining real-WAV issue is not a C-versus-binary translation error:
+the original machine code's fixed 2:3 / 3:2 lane weights do not decode this
+sound-card recording, while a diagnostic-only 1:1 override does. Do not change
+the recovered original defaults. A native K6 ADC trace or controlled signal
+generator measurement is needed to determine whether the sound-card's
+1200/1800 amplitude response differs from the receiver path for which the
+original thresholds were selected.
 
 
 ## Original frame callback and 40-byte application record
