@@ -98,6 +98,91 @@ static void test_parse_variant_1f(void)
     assert(message.received_crc == message.calculated_crc);
 }
 
+static void refresh_frame_crc(uint8_t frame[TDCSRX_FRAME_SIZE])
+{
+    uint16_t crc = tdcsrx_crc16_xmodem(frame, 43u);
+    frame[43] = (uint8_t)(crc >> 8);
+    frame[44] = (uint8_t)crc;
+}
+
+static void test_original_40_byte_app_record_abi(void)
+{
+    uint8_t frame[TDCSRX_FRAME_SIZE];
+    tdcsrx_app_record_t record;
+    uint16_t speed;
+
+    make_frame(frame, 0);
+    memset(&record, 0xa5, sizeof(record));
+    assert(tdcsrx_build_app_record(frame, sizeof(frame), &record));
+
+    assert(memcmp(record.train_prefix, frame + 0x0e, 4u) == 0);
+    assert(memcmp(record.train_number_le, frame + 0x12, 3u) == 0);
+    assert(record.train_number_le[3] == 0u);
+
+    assert(record.mileage_magnitude_le[0] == frame[0x19]);
+    assert(record.mileage_magnitude_le[1] == frame[0x1a]);
+    assert(record.mileage_magnitude_le[2] == (uint8_t)(frame[0x1b] & 0x3fu));
+    assert(record.mileage_magnitude_le[3] == 0u);
+    assert(memcmp(record.locomotive_serial_le, frame + 0x17, 2u) == 0);
+    assert(memcmp(record.total_weight_le, frame + 0x1f, 2u) == 0);
+    assert(memcmp(record.calculated_length_le, frame + 0x21, 2u) == 0);
+    assert(record.auxiliary_12_13[0] == frame[0x28]);
+    assert(record.auxiliary_12_13[1] == frame[0x29]);
+
+    speed = (uint16_t)((uint16_t)frame[0x1c] |
+                       ((uint16_t)frame[0x1d] << 8));
+    speed &= 0x03ffu;
+    assert(record.speed_le[0] == (uint8_t)speed);
+    assert(record.speed_le[1] == (uint8_t)(speed >> 8));
+
+    assert(memcmp(record.locomotive_type_le, frame + 0x15, 2u) == 0);
+    assert(record.locomotive_role == (uint8_t)(frame[0x0d] & 0x03u));
+    assert(record.mileage_present == 1u);
+    assert(record.mileage_negative == (uint8_t)(frame[0x1b] >> 7));
+    assert(record.mileage_direction == (uint8_t)((frame[0x1b] >> 6) & 1u));
+    assert(record.car_count == frame[0x23]);
+    assert(memcmp(record.station_number_le, frame + 0x24, 2u) == 0);
+    assert(record.frame_26_copy == frame[0x26]);
+    assert(record.frame_27_copy == frame[0x27]);
+    assert(record.frame_2a_copy == frame[0x2a]);
+    assert(record.signal_machine == (uint8_t)(frame[0x0b] & 0x0fu));
+    assert(record.signal_kind == (uint8_t)(frame[0x0c] & 0x07u));
+    assert(record.header_variant == 0u);
+    assert(record.fixed_index_one == 1u);
+    assert(record.reserved_26_27[0] == 0u);
+    assert(record.reserved_26_27[1] == 0u);
+
+    /* Prove the parser's two dynamic-looking copies use literal index one. */
+    frame[0x27] = 0xa6u;
+    frame[0x29] = 0x5cu;
+    refresh_frame_crc(frame);
+    assert(tdcsrx_build_app_record(frame, sizeof(frame), &record));
+    assert(record.frame_27_copy == 0xa6u);
+    assert(record.auxiliary_12_13[1] == 0x5cu);
+    assert(record.fixed_index_one == 1u);
+
+    make_frame(frame, 1);
+    assert(tdcsrx_build_app_record(frame, sizeof(frame), &record));
+    assert(record.header_variant == 1u);
+
+    /* All-FF mileage is absent; the payload magnitude still keeps 22 bits. */
+    make_frame(frame, 0);
+    frame[0x19] = 0xffu;
+    frame[0x1a] = 0xffu;
+    frame[0x1b] = 0xffu;
+    refresh_frame_crc(frame);
+    assert(tdcsrx_build_app_record(frame, sizeof(frame), &record));
+    assert(record.mileage_present == 0u);
+    assert(record.mileage_magnitude_le[0] == 0xffu);
+    assert(record.mileage_magnitude_le[1] == 0xffu);
+    assert(record.mileage_magnitude_le[2] == 0x3fu);
+
+    frame[44] ^= 1u;
+    memset(&record, 0xa5, sizeof(record));
+    assert(!tdcsrx_build_app_record(frame, sizeof(frame), &record));
+    assert(((const uint8_t *)&record)[0] == 0xa5u);
+}
+
 static void test_parse_variant_ff(void)
 {
     uint8_t frame[TDCSRX_FRAME_SIZE];
@@ -313,11 +398,13 @@ int main(void)
     puts("Sync acquisition normal/inverted, 31/32-bit windows, 2-bit tolerance and 3-bit rejection: PASS");
     puts("MSB-first 26-bit collection and BCH decode: PASS");
     test_parse_variant_1f();
+    test_original_40_byte_app_record_abi();
     test_parse_variant_ff();
     test_rejections();
     test_bch_syndrome_and_single_bit_correction();
     puts("CRC-16/XMODEM: PASS");
     puts("45-byte target-frame parser, both header variants, all fields: PASS");
+    puts("Original 40-byte app-record ABI, dynamic copies and safe tail: PASS");
     puts("CRC/header/length/null rejection: PASS");
     return 0;
 }
