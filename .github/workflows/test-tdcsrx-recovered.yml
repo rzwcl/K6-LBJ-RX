@@ -1,4 +1,4 @@
-name: Test recovered TDCSRX RX 0.3 protocol path
+name: Test recovered TDCSRX RX 0.3 protocol and frame path
 
 on:
   push:
@@ -15,12 +15,12 @@ permissions:
   contents: read
 
 jobs:
-  host-test:
+  protocol-frame-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile and test recovered TDCSRX layers
-        run: make -C research/tdcsrx_rx03 test
+      - name: Compile and test recovered protocol, BCH, sync, and frame collectors
+        run: make -C research/tdcsrx_rx03 test-protocol
       - name: Clean test executables
         if: always()
         run: make -C research/tdcsrx_rx03 clean
