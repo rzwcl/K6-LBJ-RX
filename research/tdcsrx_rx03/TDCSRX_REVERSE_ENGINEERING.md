@@ -407,3 +407,42 @@ known sync. For the synthetic case, trace every one of the 8 sample updates
 inside each symbol and log both discriminator sign changes and phase wraps.
 Do not tune audio gain further until ring-history and state-update behaviour
 has been matched instruction by instruction.
+
+
+## Original frame callback and 44-byte application record
+
+The caller at code offset 0x0D02 loads the third argument for the 0x0950
+sample routine from literal-pool word 0x20000815 (code literal at 0x0DB4).
+This is a Thumb function pointer to code offset 0x0594, the original
+application frame callback.
+
+The callback's first instructions load the global application object pointer
+from literal address 0x20000898; the literal value is 0x200011A4. It receives
+the decoded record pointer in r0, copies exactly 0x2C bytes (44 bytes) into
+the application's current-record/history area, updates the record counters
+and invokes the application display hook stored in the global object. This
+establishes that the 0x0800 collector's third argument is a frame callback,
+not a generic DSP-state pointer.
+
+The recovered frame parser at code offset 0x061C writes a compact record
+through its output pointer. Confirmed output offsets include:
+- +0..+3: four transmitted train-prefix bytes;
+- +4..+6: little-endian 24-bit train number (written as a 32-bit value);
+- +0x0C: little-endian locomotive serial;
+- +0x0E: total weight;
+- +0x10: calculated length;
+- +0x14: speed (10-bit value);
+- +0x16..+0x17: locomotive type;
+- +0x18: locomotive role;
+- +0x19..+0x1B: mileage-present, mileage-negative and mileage-direction flags;
+- +0x22..+0x23: signal-machine and signal-kind codes.
+Other output bytes are also written by the parser, including mileage and
+station/track-related fields; their complete 44-byte map is still being
+recovered from the remaining stores and display reads.
+
+Important ABI distinction: the current host convenience type tdcsrx_message_t
+includes raw payload, raw frame and calculated/received CRC for diagnostics.
+It is **not** the original 44-byte application record and must not be passed
+directly to a reconstructed original UI callback. A K6-portable
+ tdcsrx_app_record_t and explicit conversion routine still need to be added
+after the remaining target record offsets are mapped.
