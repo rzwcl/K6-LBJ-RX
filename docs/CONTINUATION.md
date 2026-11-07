@@ -378,3 +378,90 @@ runtime `0x20000A80` 是 code offset `0x0800`；runtime `0x20000484` 是 code of
 - `5643d8b5aca506ca1881ade36d18f16a0df37210`：signal-path报告纠正长度。
 - `3fb919d86e86c14d3cc1b33a8036b3e9f31a2f23`：交接文档增加第五轮进度。
 - 后续 parser偏移细化见本轮提交之后的最新 HEAD。
+
+
+## 2026-11-07 第七轮进展：TDCSRX C 移植已与原始 Thumb 逐样本、逐位匹配
+
+> 本节更新并取代前面关于“C DSP 翻译本身仍未验证/仍需逐指令重建”的旧状态。早期真实 WAV 诊断数字仍是历史事实，但现已确定那是原始固定权重对这段外部声卡录音不适配，不是 C 与原始机器码不一致。
+
+### 1. 原始 FAP1 机器码被直接执行
+
+新增 tools/emulate_tdcsrx_dsp.py，CI 安装 Unicorn 后直接执行原始 TDCSRX RX 0.3 FAP1，而不是用 Python 重写 DSP：
+
+- 来源：troilus/lbjradioweb/archive/apps/TDCSRX-cn.v5.5.6.app
+- 原始 blob SHA-1：af2142508e75b9ef2d2d2c4963be33ace5ee8523
+- 代码 CRC32：640D979A
+- 代码区大小：4076 bytes
+- link VMA：0x20000280
+- 入口：0x0950，runtime 0x20000BD0
+- 每输入一个9.6kHz unsigned 12-bit ADC样本，调用原始 Thumb DSP一次。
+- 唯一模拟 hook 是在原始 0x0800 collector入口记录其收到的bit并立即返回；滤波、I/Q、helper、baseline、两路差分、DPLL等指令都由原始FAP1执行。
+
+### 2. C 与原始 Thumb 对比结果
+
+固定真实 WAV rzwcl/450-TAx2/2026-10-11_17-30-46_audio_457550000Hz.wav：
+- blob SHA-1：8fb409ef803a98c17834fa230410c4579b030a83
+- 22050Hz mono，1.696961秒，重采样后16291个9.6kHz ADC样本。
+
+Actions run 42354887689 成功：
+- STATE_COMPARE samples=16291 mismatching_fields=0
+- 导出状态字段全部最大绝对差值为0：ADC输入、filter_y1、1200/1800四个I/Q累积、两路baseline、两个phase索引、两路previous_difference和DPLL phase。
+- BIT_COMPARE lane=0 thumb=1988 C=1988 overlap=1988 mismatches=0
+- BIT_COMPARE lane=1 thumb=1865 C=1865 overlap=1865 mismatches=0
+- THUMB_DSP_EXECUTED samples=16291 collector_calls=3853 lane_bits=1988/1865
+
+因此现在可确认：tdcsrx_recovered_dsp.c 的采样DSP与原始RX 0.3二进制执行结果一致（至少对这段真实采样，所有导出状态及两路collector位流均完全一致）。不要再把C翻译问题当成下一步首要故障点。
+
+### 3. 为什么真实 WAV 的原始权重仍然解不出
+
+原始 Thumb 初始化确切写入：
+- lane A：weight1200=2, weight1800=3
+- lane B：weight1200=3, weight1800=2
+
+这些原版值在C中保持不变。固定真实声卡WAV在原版权重下：
+- lane A：约1988 symbols，ones=273，sync最近Hamming distance 8–10，BER约0.32–0.34；
+- lane B：约1850–1865 symbols，ones约1350，sync最近Hamming distance 7，BER约0.37–0.40；
+- 两路均无完整帧回调。
+
+诊断副本把两条lane临时都设为1:1，不修改其他任何DSP操作：
+- 两路输出相同位流，2012 symbols；
+- 对齐reference BER=0.0000，sync距离0；
+- 解码得到X319、20km/h、车型237、机车号0032、CRC B27A/B27A；
+- 回调4次（两条独立collector各自重捕获/回调）。
+
+这说明这段外部声卡录音的1200/1800幅度响应不适配原始权重门限；1:1是诊断实验，绝不能据此改生产默认权重。原始K6收音机的ADC/音频响应可能不同，必须通过K6采样或受控信号源量出真实幅度比例后才能判断是否需要输入侧校准。
+
+新报告：research/tdcsrx_rx03/TDCSRX_THUMB_VALIDATION_2026-11-07.md。旧诊断报告也已添加更正说明：research/tdcsrx_rx03/TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md。
+
+### 4. 本轮提交的主要文件
+
+| 文件 | 用途 |
+|---|---|
+| tools/emulate_tdcsrx_dsp.py | 直接用Unicorn执行原始FAP1 Thumb DSP，输出每样本状态和两路bit |
+| research/tdcsrx_rx03/test_tdcsrx_real_wav.c | 原始权重真实WAV探针 + 明确标注的1:1诊断实验 |
+| research/tdcsrx_rx03/compare_real_wav_bits.py | 48kHz参考位流、独立9.6kHz参考解调和C位流对照 |
+| research/tdcsrx_rx03/prepare_real_wav.py | 固定真实WAV校验、带限重采样及12-bit ADC映射 |
+| .github/workflows/test-tdcsrx-real-wav.yml | 真实WAV、合成诊断、原始Thumb执行、C/Thumb对照和工件上传 |
+| research/tdcsrx_rx03/TDCSRX_THUMB_VALIDATION_2026-11-07.md | 本轮机器码级验证报告 |
+| research/tdcsrx_rx03/TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md | 历史WAV报告，已附加最新更正 |
+| research/tdcsrx_rx03/TDCSRX_REVERSE_ENGINEERING.md | 更新sample DSP成熟度和回调ABI说明 |
+| research/tdcsrx_rx03/TDCSRX_RX03_SIGNAL_PATH.md | 更新与原始Thumb完全匹配的状态 |
+| README.md | 更新项目当前成熟度 |
+
+### 5. 当前 CI 分层
+
+- Actions run 42354796210：TDCSRX协议、BCH、sync、双collector、frame/CRC测试 — success。
+- Actions run 42354796215：TDCSRX recovered source packaging — success。
+- Actions run 42354887689：真实WAV + 原始Thumb执行 + C/Thumb逐样本/逐位对比 + 1:1诊断 — success。
+
+注意：真实WAV工作流最终success，不表示原始默认权重在这段WAV上成功；日志必须同时查看ORIGINAL与BALANCED_DIAGNOSTIC两组结果。
+
+### 6. 还未完成、下一步顺序
+
+1. **优先补全原始40-byte应用记录结构。** 已确认 0x0DB4 literal的 0x20000815 是Thumb callback入口（code offset 0x0594）；callback把解析器输出的40字节复制到global app object +4。目前 tdcsrx_message_t 是主机调试结构，不是原应用ABI。剩余动态字段、r1计算含义、记录中未写入字节和显示formatter读引用尚未全部映射。完成前不能直接把host message传给复原UI。
+2. **拿到K6原生ADC或可控FFSK音频数据**，确认原始2:3 / 3:2门限在BK4819真实音频路径下的表现。不得仅凭声卡WAV就改权重。
+3. **拿到BK4819 raw FIFO dump**，记录 REG_02/REG_0B/REG_5D/REG_5E/REG_5F、RX_SYNC/ALMOST_FULL/RX_FINISHED时序、原始16-bit word顺序和已知FFSK帧。确认硬件同步剥离、byte/bit order、极性、长度与重捕获后，再写 tdcsrx_bk4819.c。
+4. LBJ继续走原版 lbj_rx_bit()，其560-bit残余POCSAG前导码host handoff测试已经通过；仍需相同的BK4819 FIFO实测。
+5. 完成后才从干净的 LOSEHU 0.13.2 固件树建立两个独立完整K6固件目标，保留用户10条RAM历史/UI/频率和退出要求，无TX、无EEPROM写入、不修改Bootloader，完成≤60KiB与实机测试。
+
+**当前仍没有可刷入的LBJRX-K6或TDCSRX-K6完整BIN。** DSP机器码级匹配不等于BK4819 FIFO已适配，更不等于K6无线接收完成。
