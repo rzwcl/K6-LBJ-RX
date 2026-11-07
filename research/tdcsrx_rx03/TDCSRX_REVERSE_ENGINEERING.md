@@ -136,17 +136,18 @@ The original `0x0950` sample routine is now translated into
 - The original initialized state block is `0x108` bytes. The two collector
   states begin at parent offsets `0x88` and `0xC8`.
 
-All arithmetic in the translation explicitly models 32-bit wrap and ARM
-arithmetic right shifts. However, the current deterministic end-to-end test
-feeding synthetic 9.6 ksample/s audio through the C translation does **not**
-acquire the target sync or deliver a frame. The protocol, BCH, CRC, and
-frame-collector tests pass, but the sample-to-bit translation is therefore
-still **unverified and not a working decoder**. The latest diagnostic records
-0 final-frame callbacks and a large bitstream mismatch; see
-[Actions run 42340865818](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42340865818).
-Do not use this DSP C path in a K6 firmware until this failure is resolved.
-The alternative K6 hardware front-end investigation is documented in
-[K6_BK4819_FIFO_ADAPTER.md](K6_BK4819_FIFO_ADAPTER.md).
+All arithmetic in the C translation explicitly models 32-bit wrap and ARM
+arithmetic right shifts. It has now been compared sample-by-sample with direct
+execution of the exact published FAP1 Thumb routine under Unicorn. On the
+pinned 16,291-sample 457.550 MHz recording, every exported state field matches
+with zero differences, and both collector-bound bitstreams match exactly
+(1,988 and 1,865 bits; zero bit errors). See
+[TDCSRX_THUMB_VALIDATION_2026-11-07.md](TDCSRX_THUMB_VALIDATION_2026-11-07.md)
+and [Actions run 42369257863](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42369257863).
+This validates the C translation against the binary; it does not prove that
+the binary's original 2:3 / 3:2 thresholds decode an external sound-card WAV,
+or that the DSP can run from the K6 RF hardware path. Keep original weights
+unchanged.
 
 ## Sync acquisition, word collection and frame assembly at code offset 0x0800
 
@@ -273,16 +274,17 @@ the same 1,200/1,800 Hz I/Q magnitudes:
 - The second path at state offsets `+0x7C..+0x87` uses the literal
   `0x0203` stored at offset `+0x84`: weights `(3, 2)`.
 
-For each path the discriminator is formed as:
+Each path applies the binary's cross-normalized discriminator:
 
-`diff = magnitude_1200 * weight_1200 - magnitude_1800 * weight_1800`
+diff = (mag1200 * smooth1800 * weight1200) - (mag1800 * smooth1200 * weight1800)
 
-Each path has its own previous-difference sign and bit-phase accumulator. The
-phase accumulator advances by `0x2000` per sample (eight increments per
-1,200-baud bit). At a discriminator sign transition, the phase state is
-nudged one quarter of the way toward `0x9000`. When the accumulator reaches
-`0x10000`, the code subtracts one bit period and sends the decision bit to
-its own collector.
+The two tone magnitudes are first multiplied by the opposite tone's smoothed
+baseline. Each path has its own previous-difference sign and bit-phase
+accumulator. The phase accumulator advances by 0x2000 per sample (eight
+increments per 1,200-baud bit). At a discriminator sign transition, the phase
+state is nudged one quarter of the way toward 0x9000. When the accumulator
+reaches 0x10000, the code subtracts one bit period and sends the decision bit
+to its own collector.
 
 - First decision path calls the collector at code offset `0x0800` with state
   base `parent_state + 0x88`.
@@ -294,14 +296,14 @@ collector states; the earlier single-`tdcsrx_stream_state_t` host module is
 only a partial model. The two paths share the tone correlators but have
 independent discriminator/clock recovery and sync/frame state.
 
-The helper called at code offset `0x0198` converts each I/Q accumulator pair
-(`+0x14/+0x18` and `+0x1C/+0x20`) into the magnitude values consumed by the
+The helper called at code offset 0x0198 converts each I/Q accumulator pair
+(+0x14/+0x18 and +0x1C/+0x20) into the magnitude values consumed by the
 two discriminators. Its integer approximation and asymmetric baseline update
-have now been translated into C. The discriminator arithmetic is
-`mag1200*smooth1800*weight1200 - mag1800*smooth1200*weight1800`, matching
-the multiply/subtract instruction order at code offsets `0x0A54..0x0A60`.
-These details are instruction-derived, but the synthetic audio-to-frame test
-still fails; they have not yet been validated as a functional decoder.
+have been translated into C and compared against the original Thumb binary.
+For the pinned real recording, all exported per-sample state and both emitted
+bitstreams match exactly. The original default weights still do not decode
+the external sound-card WAV; a diagnostic-only 1:1 override does, but must not
+be promoted to the production configuration without native-radio evidence.
 
 ## K6 BK4819 FIFO front-end research — candidate only
 
@@ -349,19 +351,17 @@ Do not reuse the deleted experimental `FirmwareOverlay` LBJ/TDCS decoders or
 the invalid BIN files from the earlier attempt. The correct source bases are
 the public LBJRX 0.4 source candidate and this TDCSRX 0.3 binary reconstruction.
 
-## Remaining reverse-engineering work
+## Remaining reverse-engineering and K6 port work
 
-1. Resolve the still-failing synthetic 9.6 ksample/s sample-to-bit test by
-   comparing captured intermediate I/Q, magnitude, baseline, discriminator
-   and phase values against instruction-level execution. Do not alter test
-   amplitudes merely to make the assertion pass.
-2. Finish validating the target's frame word-count logic and callback/reset
-   lifecycle, especially malformed-frame recovery.
-3. Reconstruct all display formatting branches and settings/key behaviour
-   before claiming the original TDCSRX app has been recovered in full.
-4. Build a K6-specific BK4819 FFSK receive adapter and validate it with
-   synthetic and recorded signals before integration into the full-firmware
-   base.
+1. Validate the original 2:3 / 3:2 tone thresholds against a native receiver
+   ADC capture or a controlled 457.550 MHz conducted test; do not tune the
+   production constants to match the external sound-card recording.
+2. Finish UI formatter/key/settings reverse engineering, including the
+   business labels for auxiliary record bytes +0x12..+0x13 and +0x1F..+0x21.
+3. Validate FIFO sync stripping, byte order, bit order, polarity, RX length,
+   overflow draining and re-acquisition on the actual K6/BK4819.
+4. Only after the hardware format is known, implement separate receive-only
+   full-firmware targets for TDCSRX and LBJRX on the pinned LOSEHU base.
 
 No K6 receiver source code has been changed as part of this reverse-engineering
 update.
@@ -421,77 +421,99 @@ original thresholds were selected.
 ## Original frame callback and 40-byte application record
 
 The caller at code offset 0x0D02 loads the third argument for the 0x0950
-sample routine from literal-pool word 0x20000815 (code literal at 0x0DB4).
-This is a Thumb function pointer to code offset 0x0594, the original
-application frame callback.
+sample routine from literal-pool word 0x20000815 (Thumb entry at code offset
+0x0594). The callback copies exactly 40 bytes from the parser's output record
+to the application current-record area at global-object offset +4, then
+updates record counters and invokes the application display hook.
 
-The callback's first instructions load the global application object pointer
-from literal address 0x20000898; the literal value is 0x200011A4. It receives
-the decoded record pointer in r0 and copies exactly 40 bytes (three 12-byte
-LDM/STM groups plus one 4-byte LDR/STR) to global-object offset +4. It then
-updates record counters and invokes the application display hook stored in
-the global object. This establishes that the 0x0800 collector's third
-argument is a frame callback, not a generic DSP-state pointer.
+The parser at code offset 0x061C receives a 45-byte frame plus a collector
+buffer containing 46 decoded bytes (23 BCH words; the final low byte is
+padding). The initial cmp r1,#0x2c checks the input frame's final valid byte
+index (44); it is not the compact output length. The application callback's
+copy loop proves the separate compact record is exactly 40 bytes.
 
-The parser's `cmp r1,#0x2c` at code offset 0x061C checks the last-index
-argument for the 45-byte input frame (valid last index 44); it is **not** the
-size of the compact output record. The callback copy sequence proves a
-40-byte record transfer.
+### Exact 40-byte output layout
 
-The recovered frame parser at code offset 0x061C writes a compact record
-through its output pointer. Confirmed output offsets include:
-- +0..+3: four transmitted train-prefix bytes;
-- +4..+6: little-endian 24-bit train number (written as a 32-bit value);
-- +0x0C: little-endian locomotive serial;
-- +0x0E: total weight;
-- +0x10: calculated length;
-- +0x14: speed (10-bit value);
-- +0x16..+0x17: locomotive type;
-- +0x18: locomotive role;
-- +0x19..+0x1B: mileage-present, mileage-negative and mileage-direction flags;
-- +0x22..+0x23: signal-machine and signal-kind codes.
-Other output bytes are also written by the parser, including mileage and
-station/track-related fields. The callback transfers 40 bytes, but their
-complete 40-byte map is still being recovered from the remaining stores and
-display reads.
+All offsets below are relative to the output pointer passed to the parser.
+Multi-byte scalar fields are little-endian. The C type
+tdcsrx_app_record_t stores multi-byte fields as byte arrays to avoid
+compiler padding and is statically checked to be exactly 40 bytes.
 
-Important ABI distinction: the current host convenience type tdcsrx_message_t
-includes raw payload, raw frame and calculated/received CRC for diagnostics.
-It is **not** the original 40-byte application record and must not be passed
-directly to a reconstructed original UI callback. A K6-portable
-tdcsrx_app_record_t and explicit conversion routine still need to be added
-after the remaining target record offsets are mapped.
-
-
-### 40-byte parser output record: observed stores and unresolved dynamic bytes
-
-The callback copy length is 40 bytes. The parser's fixed stores establish these
-output offsets (all relative to the parser's output pointer r2):
-
-| Record offset | Source / interpretation | Confidence |
+| Record offset | Source / value | State |
 |---|---|---|
-| 0x00..0x03 | frame[0x0E..0x11], four train-prefix bytes | direct stores |
-| 0x04..0x07 | frame[0x12], frame[0x13], frame[0x14] assembled as LE24 in a 32-bit word | direct stores |
-| 0x08..0x0B | mileage magnitude assembled from frame[0x19..0x1B], high bits masked | direct store; flags separate |
-| 0x0C..0x0D | LE16 from frame[0x17..0x18], locomotive serial | direct store |
-| 0x0E..0x0F | LE16 from frame[0x1F..0x20], total weight | direct store |
-| 0x10..0x11 | LE16 from frame[0x21..0x22], calculated length | direct store |
-| 0x12..0x13 | two bytes read from frame[0x28] and frame[0x28 + r1] | dynamic index; meaning unresolved |
-| 0x14..0x15 | LE16 from frame[0x1C..0x1D], masked to 10-bit speed | direct store |
-| 0x16..0x17 | frame[0x15..0x16], locomotive type | direct stores |
-| 0x18 | frame[0x0D] & 0x03, locomotive role | direct store |
-| 0x19 | mileage-present flag | direct store |
-| 0x1A | mileage-negative flag from frame[0x1B] bit 7 | direct store |
-| 0x1B | mileage-direction flag from frame[0x1B] bit 6 | direct store |
-| 0x1C | frame[0x23], car count | direct store |
-| 0x1D..0x1E | frame[0x24..0x25], station number bytes | direct stores |
-| 0x1F | frame[0x26], then frame[0x27] is written at 0x1F + r1 | dynamic write can shift/overlap; unresolved |
-| 0x21 | frame[0x2A] | direct store; business label unresolved |
-| 0x22..0x23 | frame[0x0B]&0x0F and frame[0x0C]&0x07, signal machine/kind | direct stores |
+| 0x00..0x03 | frame[0x0E..0x11], four train-prefix bytes | confirmed |
+| 0x04..0x07 | frame[0x12..0x14] as LE24, high output byte zero | confirmed |
+| 0x08..0x0B | frame[0x19..0x1B] masked to mileage magnitude bits 0..21; high output byte zero | confirmed |
+| 0x0C..0x0D | frame[0x17..0x18], locomotive serial | confirmed |
+| 0x0E..0x0F | frame[0x1F..0x20], total weight | confirmed |
+| 0x10..0x11 | frame[0x21..0x22], calculated length | confirmed |
+| 0x12..0x13 | frame[0x28], frame[0x29] | confirmed fixed index 1 |
+| 0x14..0x15 | LE16(frame[0x1C..0x1D]) masked with 0x03FF, speed | confirmed |
+| 0x16..0x17 | frame[0x15..0x16], locomotive type | confirmed |
+| 0x18 | frame[0x0D] & 0x03, locomotive role | confirmed |
+| 0x19 | 0 if frame[0x19..0x1B] are all FF, otherwise 1 | confirmed |
+| 0x1A | frame[0x1B] bit 7, mileage-negative flag | confirmed |
+| 0x1B | frame[0x1B] bit 6, mileage-direction flag | confirmed |
+| 0x1C | frame[0x23], car count | confirmed |
+| 0x1D..0x1E | frame[0x24..0x25], station number bytes | confirmed bytes; business label from target UI |
+| 0x1F | frame[0x26] | confirmed fixed copy |
+| 0x20 | frame[0x27] | confirmed fixed index 1 copy |
+| 0x21 | frame[0x2A] | confirmed copy; business meaning from target UI |
+| 0x22 | frame[0x0B] & 0x0F, signal-machine code | confirmed |
+| 0x23 | frame[0x0C] & 0x07, signal-kind code | confirmed |
+| 0x24 | 1 for FF FF FF header, 0 for 1F 8C 30 header | confirmed |
+| 0x25 | constant 1 | confirmed |
+| 0x26..0x27 | not written by the original parser | untouched |
 
-The dynamic index r1 is computed in the parser from the train-number value by
-repeated subtraction using a threshold selected from a literal table. Its exact
-business meaning and the full role of the bytes at 0x12..0x13, 0x1F+r1 and
-0x21 still need the corresponding display formatter/read sites. Record offset
-0x20 is not written by the parser's observed fixed stores; do not assume it is
-zero unless initialization or the consumer proves that.
+### The train-number quotient is not an output index
+
+At code offset 0x06FA, the parser's R1 register contains a leading-decimal-digit
+quotient derived from the 24-bit train number. R3 contains the remainder and
+R4 the selected decimal divisor. The parser rejects quotient 9. Direct Thumb
+tests observed:
+
+| Train number | Quotient | Divisor | Remainder | Parser |
+|---:|---:|---:|---:|---|
+| 0 | 0 | 1 | 0 | accept |
+| 1 | 1 | 1 | 0 | accept |
+| 319 | 3 | 100 | 19 | accept |
+| 1,234 | 1 | 1,000 | 234 | accept |
+| 8,765,432 | 8 | 1,000,000 | 765,432 | accept |
+| 9,123,456 | 9 | 1,000,000 | 123,456 | reject |
+
+This validation quotient is later overwritten. At code offset 0x072A the parser
+sets R1 to literal 1; the subsequent copy instructions use that fixed value
+for frame[0x29] -> record[0x13] and frame[0x27] -> record[0x20]. The separate
+record byte +0x25 is also written as 1. Neither field stores the earlier
+train-number quotient.
+
+The tools/emulate_tdcsrx_parser.py Unicorn test executes the original parser
+against all the values above, injects distinct markers into frame[0x27] and
+frame[0x29], tests both header variants, and verifies the 40-byte output
+boundary. The latest successful run is
+[Actions run 42369257863](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42369257863).
+
+### C ABI conversion and safety
+
+tdcsrx_message_t remains a host diagnostic structure containing raw payload,
+raw frame and CRC fields. It is **not** the 40-byte callback ABI and must never
+be passed directly to the reconstructed original UI callback.
+
+The new tdcsrx_app_record_t and
+tdcsrx_build_app_record(frame, length, out) provide the separate 40-byte
+representation. The conversion first reuses the recovered frame parser's
+header/CRC validation, then writes the confirmed frame-derived fields and
+flags. It zeros the two bytes +0x26..+0x27 which the original parser leaves
+untouched; this is an intentional deterministic safety improvement, not a
+claim that the original binary initialized those bytes.
+
+Host tests cover both header variants, all confirmed byte copies, mileage
+absence, fixed index-one semantics, rejected CRC and zeroed untouched tail.
+The successful C test run is
+[Actions run 42369594606](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42369594606).
+
+The remaining application-level uncertainties are the display/business
+meaning of auxiliary bytes +0x12..+0x13, +0x1F..+0x21, the display formatters,
+and settings/key behaviour. The raw byte ABI is sufficient to prevent an
+incorrect tdcsrx_message_t pointer from being passed to the UI.
+
