@@ -12,6 +12,7 @@ typedef struct {
     unsigned int path_mask;
     unsigned int symbol_count[2];
     unsigned int symbol_ones[2];
+    char bits[2][4096];
     tdcsrx_message_t last;
 } capture_t;
 
@@ -22,6 +23,31 @@ static void on_symbol(void *context, uint8_t path, uint8_t bit)
         return;
     ++capture->symbol_count[path];
     capture->symbol_ones[path] += bit != 0u;
+    if (capture->symbol_count[path] < sizeof(capture->bits[path]) - 1u) {
+        capture->bits[path][capture->symbol_count[path] - 1u] =
+            bit != 0u ? '1' : '0';
+        capture->bits[path][capture->symbol_count[path]] = '\\0';
+    }
+}
+
+static void write_bitstreams(const capture_t *capture, double scale)
+{
+    unsigned int path;
+    char filename[80];
+
+    for (path = 0u; path < 2u; ++path) {
+        FILE *file;
+        (void)snprintf(filename, sizeof(filename),
+                       "tdcsrx_path%u_scale_%03u.bits",
+                       path, (unsigned int)(scale * 100.0));
+        file = fopen(filename, "wb");
+        if (file != NULL) {
+            (void)fwrite(capture->bits[path], 1u,
+                         strlen(capture->bits[path]), file);
+            (void)fputc('\\n', file);
+            fclose(file);
+        }
+    }
 }
 
 static void on_frame(void *context, uint8_t path,
