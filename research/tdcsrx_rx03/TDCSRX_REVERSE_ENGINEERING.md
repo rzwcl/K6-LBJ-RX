@@ -452,3 +452,37 @@ It is **not** the original 40-byte application record and must not be passed
 directly to a reconstructed original UI callback. A K6-portable
 tdcsrx_app_record_t and explicit conversion routine still need to be added
 after the remaining target record offsets are mapped.
+
+
+### 40-byte parser output record: observed stores and unresolved dynamic bytes
+
+The callback copy length is 40 bytes. The parser's fixed stores establish these
+output offsets (all relative to the parser's output pointer r2):
+
+| Record offset | Source / interpretation | Confidence |
+|---|---|---|
+| 0x00..0x03 | frame[0x0E..0x11], four train-prefix bytes | direct stores |
+| 0x04..0x07 | frame[0x12], frame[0x13], frame[0x14] assembled as LE24 in a 32-bit word | direct stores |
+| 0x08..0x0B | mileage magnitude assembled from frame[0x19..0x1B], high bits masked | direct store; flags separate |
+| 0x0C..0x0D | LE16 from frame[0x17..0x18], locomotive serial | direct store |
+| 0x0E..0x0F | LE16 from frame[0x1F..0x20], total weight | direct store |
+| 0x10..0x11 | LE16 from frame[0x21..0x22], calculated length | direct store |
+| 0x12..0x13 | two bytes read from frame[0x28] and frame[0x28 + r1] | dynamic index; meaning unresolved |
+| 0x14..0x15 | LE16 from frame[0x1C..0x1D], masked to 10-bit speed | direct store |
+| 0x16..0x17 | frame[0x15..0x16], locomotive type | direct stores |
+| 0x18 | frame[0x0D] & 0x03, locomotive role | direct store |
+| 0x19 | mileage-present flag | direct store |
+| 0x1A | mileage-negative flag from frame[0x1B] bit 7 | direct store |
+| 0x1B | mileage-direction flag from frame[0x1B] bit 6 | direct store |
+| 0x1C | frame[0x23], car count | direct store |
+| 0x1D..0x1E | frame[0x24..0x25], station number bytes | direct stores |
+| 0x1F | frame[0x26], then frame[0x27] is written at 0x1F + r1 | dynamic write can shift/overlap; unresolved |
+| 0x21 | frame[0x2A] | direct store; business label unresolved |
+| 0x22..0x23 | frame[0x0B]&0x0F and frame[0x0C]&0x07, signal machine/kind | direct stores |
+
+The dynamic index r1 is computed in the parser from the train-number value by
+repeated subtraction using a threshold selected from a literal table. Its exact
+business meaning and the full role of the bytes at 0x12..0x13, 0x1F+r1 and
+0x21 still need the corresponding display formatter/read sites. Record offset
+0x20 is not written by the parser's observed fixed stores; do not assume it is
+zero unless initialization or the consumer proves that.
