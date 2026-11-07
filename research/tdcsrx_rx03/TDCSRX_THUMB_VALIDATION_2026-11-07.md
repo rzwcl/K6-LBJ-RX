@@ -42,11 +42,16 @@ The C harness exports one state row after each input sample. The Thumb emulator 
 Latest successful run before the bitstream-path comparison fix:
 
 - Actions run `42354796193`: [Thumb DSP execution and per-sample state comparison](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42354796193)
+- Actions run `42354887689`: [C-versus-Thumb state and bitstream comparison](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42354887689)
 - `THUMB_DSP_EXECUTED samples=16291 collector_calls=3853 lane_bits=1988/1865`
 - `STATE_COMPARE samples=16291 mismatching_fields=0`
 - Every exported field had maximum absolute difference zero.
 
-A follow-up commit updates the emulator's C bit-file lookup to the new explicit `original` / `balanced` profile names. The next CI run must show the two original C bitstreams match the original Thumb-emitted bitstreams exactly as well; do not mark that check complete until its logs say so.
+Follow-up Actions run `42354887689` confirms the emitted bitstreams also match exactly:
+- lane 0: Thumb 1,988 bits; C 1,988 bits; mismatches 0;
+- lane 1: Thumb 1,865 bits; C 1,865 bits; mismatches 0.
+
+Therefore both the selected per-sample state and both collector-bound decision bitstreams are identical to the original FAP1 execution for this input.
 
 ## 3. Real WAV: original weights versus diagnostic-only weights
 
