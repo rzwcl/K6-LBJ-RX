@@ -143,6 +143,7 @@ int main(int argc, char **argv)
         tdcsrx_audio_state_t state;
         capture_t capture;
         size_t i;
+        FILE *trace = NULL;
 
         memset(&capture, 0, sizeof(capture));
         tdcsrx_audio_init(&state);
@@ -159,7 +160,24 @@ int main(int argc, char **argv)
             tdcsrx_audio_feed_sample_traced(
                 &state, (uint16_t)adjusted, on_symbol, &capture,
                 on_frame, &capture);
+            if (trace != NULL) {
+                (void)fprintf(trace,
+                    "%lu,%d,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld\\n",
+                    (unsigned long)i, adjusted,
+                    (long)state.filter_y_1,
+                    (long)state.corr_1200_i, (long)state.corr_1200_q,
+                    (long)state.corr_1800_i, (long)state.corr_1800_q,
+                    (long)state.smooth_1200, (long)state.smooth_1800,
+                    (unsigned int)state.phase_1200,
+                    (unsigned int)state.phase_1800,
+                    (long)state.discriminator[0].previous_difference,
+                    (long)state.discriminator[0].phase,
+                    (long)state.discriminator[1].previous_difference,
+                    (long)state.discriminator[1].phase);
+            }
         }
+        if (trace != NULL)
+            fclose(trace);
 
         write_bitstreams(&capture, scales[scale_index]);
         printf("SUMMARY calls=%u paths=0x%X symbols=%u/%u ones=%u/%u "
