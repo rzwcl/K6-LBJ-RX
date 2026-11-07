@@ -1,5 +1,8 @@
 # TDCSRX RX 0.3 — 真实 457.550 MHz WAV DSP 诊断（2026-11-07）
 
+
+> **后续状态更正（2026-11-07）：** 本报告早期的“C DSP 尚未匹配原始机器码”结论已被直接 Thumb 执行试验取代。使用 SHA-1 为 `af2142508e75b9ef2d2d2c4963be33ace5ee8523` 的原始 FAP1，Thumb 模拟器执行 `0x0950` 后，C 与原始二进制在 16,291 个采样点的全部导出状态字段均为零差异；两条 collector 位流也逐位完全一致（1,988/1,988 与 1,865/1,865，mismatches=0）。当前真实 WAV 的失败边界是原始固定权重 2:3 / 3:2 不适配这段外部声卡录音，而不是 C 译码器翻译错误。把诊断副本临时改成 1:1 可以解出 X319 / 20 km/h / CRC B27A，但 1:1 不是原版默认值，不应写入生产固件。完整证据：[TDCSRX_THUMB_VALIDATION_2026-11-07.md](TDCSRX_THUMB_VALIDATION_2026-11-07.md)，[Actions run 42354887689](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42354887689)。
+
 ## 输入样本与独立基准
 
 样本来自另一个现有项目仓库：
@@ -121,3 +124,12 @@ GitHub Actions run 42344201505 上传了以下诊断工件（artifact）：
 3. 逆向恢复的原版双路相关器/基线交叉归一化/DPLL C 链仍不能从同一数据正确输出位流。
 
 下一步不是再扫音量，而是建立逐指令参考模型，对原二进制的 ring history 读写、I/Q 值、helper输入/输出、两个 baseline、两路 diff、previous sign、phase correction 和 frame collector 调用逐采样比较。没有比对证据前不应改生产 DSP 公式。
+
+## 后续验证：C DSP 与原始 Thumb 代码完全匹配
+
+Actions run 42354887689 直接运行原始 FAP1 Thumb 样本 DSP，并与 C 翻译逐项比较：
+- 16,291 个 ADC 样本，14 个导出状态字段 mismatch=0，所有最大绝对差值均为0；
+- lane A：Thumb 1,988 bits / C 1,988 bits / mismatches=0；
+- lane B：Thumb 1,865 bits / C 1,865 bits / mismatches=0。
+
+真实 WAV 的原始权重仍然没有有效帧；诊断 1:1 权重两路均得到 BER=0.0000 的对齐位流并解出 CRC B27A。原始权重不变，外部声卡的幅度响应问题需用原生 K6 ADC 或受控信号源确定。
