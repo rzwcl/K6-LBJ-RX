@@ -169,3 +169,27 @@ independent 48 kHz demodulator finds the 31-bit sync at bit 1376 / 1.146667 s.
 The reconstructed 9.6 kHz C DSP currently fails on this real recording too:
 no complete frame, closest sync distances 7..10 bits, and aligned BER about
 0.32..0.40. Further instruction-level sample state tracing is required.
+
+
+## 2026-11-07 — independent reference success vs recovered DSP failure
+
+The pinned field WAV can be decoded by a separate, deliberately simple 8-sample
+quadrature-energy reference detector at 9.6 kHz. It finds sync at bit 259 in the
+resampled sample stream and produces a frame with BCH corrections 0, valid
+header/padding, and CRC B27A/B27A. This is a reference/control implementation,
+not the original TDCSRX DSP.
+
+The reconstructed target C path still does not decode the same WAV. Its two
+weighted slicer lanes have substantial bitstream mismatch (sync Hamming distance
+7–10, BER around 0.32–0.40) and no frame callbacks. The standalone synthetic
+ADC-to-frame diagnostic also still fails after trying a wide 8:1 input tone
+amplitude ratio: about 831/825 output symbols for 694 expected bits, and the two
+weighted lanes remain on opposite fixed decisions for the early alternating
+preamble. See CI run 42348715488 and the detailed report
+[TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md](TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md).
+
+Do not substitute the reference detector into the target-recovery module or
+claim the original sample DSP is complete. The next investigation is a per-sample
+instruction-level model of the history ring, I/Q accumulators, 0x0198 baseline
+helper, weighted differences, sign transitions, phase correction, and collector
+call timing.
