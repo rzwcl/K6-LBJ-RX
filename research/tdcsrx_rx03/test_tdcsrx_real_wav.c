@@ -26,7 +26,7 @@ static void on_symbol(void *context, uint8_t path, uint8_t bit)
     if (capture->symbol_count[path] < sizeof(capture->bits[path]) - 1u) {
         capture->bits[path][capture->symbol_count[path] - 1u] =
             bit != 0u ? '1' : '0';
-        capture->bits[path][capture->symbol_count[path]] = '\\0';
+        capture->bits[path][capture->symbol_count[path]] = '\0';
     }
 }
 
@@ -44,7 +44,7 @@ static void write_bitstreams(const capture_t *capture, double scale)
         if (file != NULL) {
             (void)fwrite(capture->bits[path], 1u,
                          strlen(capture->bits[path]), file);
-            (void)fputc('\\n', file);
+            (void)fputc('\n', file);
             fclose(file);
         }
     }
