@@ -198,13 +198,16 @@ call timing.
 
 The caller's third argument to the 0x0950 DSP is a function pointer loaded
 from code literal 0x0DB4: value 0x20000815, Thumb entry for code offset
-0x0594. The callback receives the parser's compact output record, copies
-exactly 0x2C (44) bytes into the application record/history area, updates
-record counters, and invokes the application display hook.
+0x0594. The callback receives the parser's compact output record and copies exactly
+40 bytes (three 12-byte LDM/STM groups plus one 4-byte LDR/STR) into the
+application current-record area at global-object offset +4. It then updates
+record counters and invokes the application display hook. The parser's
+separate cmp r1,#0x2c checks the last index 44 of the 45-byte input frame; it
+does not describe the compact output record size.
 
 The host reconstruction currently passes a generic C callback a
  tdcsrx_message_t that also contains raw payload/frame and CRC diagnostics.
-That object is not ABI-compatible with the original 44-byte application
+That object is not ABI-compatible with the original 40-byte application
 record. Do not treat the host message struct as the original UI record. The
 remaining offsets and a portable explicit record-conversion routine are
 still to be reconstructed.
