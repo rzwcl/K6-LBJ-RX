@@ -3,7 +3,7 @@
 更新时间：2026-11-07
 仓库：https://github.com/rzwcl/K6-LBJ-RX
 默认分支：`main`
-当前 main HEAD：4f12c5ef664b2e4f31cf94030c62216e8430c617。
+当前 main HEAD：86128fdf8e4683aaa98f8b978bf37dd2b949305c。
 
 ## 目标（不能偏离）
 
@@ -265,3 +265,16 @@ runtime `0x20000A80` 是 code offset `0x0800`；runtime `0x20000484` 是 code of
 6. 在 DSP 与 BK4819 FIFO 两块未验证前，不开始发布/刷入 TDCSRX-K6 BIN。
 
 当前安全结论：原版 TDCSRX 的协议/帧层部分可读 C 重建已提交，protocol/frame 主机测试通过；原版 ADC DSP 的 C 重建仍未通过真实 WAV；BK4819 FIFO 与 K6 实机仍未验证。LBJRX bit decoder 的主机交接测试仍通过，但其 BK4819 FIFO 也尚未实测。没有可刷入的 LBJRX-K6 / TDCSRX-K6 完整固件。
+
+
+## 2026-11-07 第三轮补充：位流参考对照可重复化
+
+- 新增 compare_real_wav_bits.py 中的独立 9.6 kHz、8-sample 正交能量参考 detector，并将 workflow 改为同时传入 48 kHz 参考 WAV 和 9.6 kHz ADC 样本。
+- 新增代码提交：65864061e4cb2fad7ca9a12817ceb7c5d35b35df。
+- workflow 调用更新提交：417e565c33f60075001a0d4c4381ae8ed60821d3。
+- 最新真实 WAV run：42344820815，输出 SIMPLE_9600_QUADRATURE best_phase=1、bit_agreement=0.8831、ones=920/2036。
+- 同一 run 中原版 C DSP 仍未解出帧；Path A 的最近 sync distance 为 8–10 bit，Path B 为 7 bit，对齐 BER 约 0.32–0.40，frame callback=0。该真实音频探针仍为失败状态。
+- 更新 report 提交：54ba75b169fac5e527e30333ccf270b244c7a109；README 对应数值更新提交：86128fdf8e4683aaa98f8b978bf37dd2b949305c。
+- 独立正交判决仅作为分析基准，不是原版 TDCSRX 0.3 DSP，也没有集成 K6 固件。
+
+当前 main 已提交全部上述源码、诊断脚本、CI、README、逆向报告和交接文档；本轮 protocol/frame CI 通过、source package workflow 通过，真实 DSP probe 保留失败。下一步继续做逐样本指令级差分，优先验证相关器 ring indexing 与 DPLL event timing；不要启动正式 K6 固件集成直到 sample-to-bit 路径和 BK4819 FIFO 交接都得到验证。
