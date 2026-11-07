@@ -161,6 +161,7 @@ int main(int argc, char **argv)
                 on_frame, &capture);
         }
 
+        write_bitstreams(&capture, scales[scale_index]);
         printf("SUMMARY calls=%u paths=0x%X symbols=%u/%u ones=%u/%u "
                "smooth=%ld/%ld diff=%ld/%ld sync=%u/%u\n",
                capture.calls, capture.path_mask,
