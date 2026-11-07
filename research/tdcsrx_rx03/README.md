@@ -45,7 +45,7 @@ test-protocol 覆盖当前已单独验证的协议/帧层。make test-dsp 会运
 - 独立 48 kHz 正交判决找到原始 31-bit sync 的位置为第 1,376 bit / 1.146667 s，与原项目分析记录的约 1.146593 s 对齐。
 - 当前 C DSP 在 9.6 kHz 重采样数据上，没有输出完整有效帧。
 - 两条 C 判决支路的最近 31-bit 同步字 Hamming distance 约为 7–10 bit；与独立参考位流的对齐 BER 约为 0.32–0.40。
-- 简单 8-sample 正交能量对照在该 WAV 上约有 88.6% 的 bit agreement，但这不是原版 DSP，也远不足以替代同步容错、BCH/CRC 和真实 K6 验证。
+- 简单 8-sample 正交能量对照在该 WAV 上约有 88.3% 的 bit agreement，但这不是原版 DSP，也远不足以替代同步容错、BCH/CRC 和真实 K6 验证。
 
 因此，协议/帧层主机测试与 ADC sample-to-bit DSP 是两个不同成熟度的部分。**不能说 TDCSRX 软解调已完成，不能声称当前代码可接收 RF，也不能将它刷入 K6。** 下一步应继续逐条比对滤波后数据、I/Q 累积、基线、差分符号和 DPLL 事件；不要只调振幅把测试调绿。
 
