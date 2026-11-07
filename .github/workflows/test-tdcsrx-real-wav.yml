@@ -10,6 +10,7 @@ on:
       - "research/tdcsrx_rx03/prepare_real_wav.py"
       - "research/tdcsrx_rx03/compare_real_wav_bits.py"
       - "research/tdcsrx_rx03/Makefile"
+      - "tools/emulate_tdcsrx_dsp.py"
       - ".github/workflows/test-tdcsrx-real-wav.yml"
 
 permissions:
@@ -20,11 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install reference demodulator dependencies
+      - name: Install reference and Thumb-emulator dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y sox
-          python3 -m pip install --user numpy
+          python3 -m pip install --user numpy unicorn
       - name: Download pinned 457.550 MHz recording
         run: |
           curl --fail --location --silent --show-error \
@@ -43,8 +44,17 @@ jobs:
           make -C research/tdcsrx_rx03 probe-real-wav SAMPLE_BIN="$GITHUB_WORKSPACE/sample-9600-adc.bin"
           probe_status=$?
           set -e
+          set +e
+          python3 tools/emulate_tdcsrx_dsp.py sample-9600-adc.bin \
+            --trace tdcsrx_thumb_trace.csv \
+            --c-trace research/tdcsrx_rx03/tdcsrx_real_wav_trace.csv \
+            --bits-prefix tdcsrx_thumb_path
+          emulator_status=$?
+          set -e
           python3 research/tdcsrx_rx03/compare_real_wav_bits.py sample-48k.wav sample-9600-adc.bin
-          exit $probe_status
+          if [ "$probe_status" -ne 0 ] || [ "$emulator_status" -ne 0 ]; then
+            exit 1
+          fi
       - name: Upload real-WAV DSP diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,6 +72,9 @@ jobs:
             research/tdcsrx_rx03/test_tdcsrx_real_wav.c
             research/tdcsrx_rx03/compare_real_wav_bits.py
             research/tdcsrx_rx03/tdcsrx_path*.bits
+            tdcsrx_thumb_trace.csv
+            tdcsrx_thumb_path*.bits
+            tools/emulate_tdcsrx_dsp.py
       - name: Clean test executables
         if: always()
         run: make -C research/tdcsrx_rx03 clean
