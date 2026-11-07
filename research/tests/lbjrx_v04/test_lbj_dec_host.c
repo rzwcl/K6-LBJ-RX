@@ -136,6 +136,56 @@ static void run_one_report(bool inverted, unsigned int sync_errors,
         feed_word(&rx, POC_IDLE, inverted);
 }
 
+static void test_residual_pocsag_preamble_after_hardware_sync(void)
+{
+    lbj_rx_t rx;
+    uint32_t ric = 1234000u;
+    uint32_t address_word;
+    uint32_t message_word;
+    uint32_t data20;
+    unsigned int i;
+    unsigned int bit;
+    unsigned int polarity;
+
+    /*
+     * Standard POCSAG preamble is 576 alternating bits. Simulate a two-byte
+     * hardware sync consuming the first 16 bits, leaving 560 bits before the
+     * original 32-bit frame sync reaches the software decoder.
+     */
+    for (polarity = 0u; polarity < 2u; ++polarity) {
+        memset(&rx, 0, sizeof(rx));
+        memset(&g_capture, 0, sizeof(g_capture));
+
+        for (bit = 0u; bit < 560u; ++bit) {
+            uint8_t value = (uint8_t)((bit & 1u) == 0u);
+            if (polarity != 0u)
+                value ^= 1u;
+            lbj_rx_bit(&rx, value);
+        }
+
+        data20 = ((ric >> 3) << 2) | 1u;
+        address_word = encode_codeword(0u, data20);
+        message_word = encode_codeword(1u, encode_bcd5("12345"));
+
+        for (i = 0u; i < 32u; ++i) {
+            uint8_t value = (uint8_t)((POC_SYNC >> (31u - i)) & 1u);
+            if (polarity != 0u)
+                value ^= 1u;
+            lbj_rx_bit(&rx, value);
+        }
+
+        feed_word(&rx, address_word, polarity != 0u);
+        feed_word(&rx, message_word, polarity != 0u);
+        for (i = 2u; i < 16u; ++i)
+            feed_word(&rx, POC_IDLE, polarity != 0u);
+
+        assert(g_capture.calls == 1u);
+        assert(g_capture.addr == ric);
+        assert(g_capture.len == 5u);
+        assert(strcmp(g_capture.bcd, "12345") == 0);
+    }
+}
+
 static void test_normal_polarity(void)
 {
     run_one_report(false, 0u, 0u);
@@ -189,6 +239,7 @@ static void test_uncorrectable_word_erasure(void)
 
 int main(void)
 {
+    test_residual_pocsag_preamble_after_hardware_sync();
     test_normal_polarity();
     test_inverted_polarity();
     test_two_bit_sync_tolerance();
@@ -200,5 +251,6 @@ int main(void)
     puts("- two-bit frame-sync tolerance");
     puts("- single-bit BCH correction");
     puts("- uncorrectable codeword preserved as five '?' markers");
+    puts("- 560 residual alternating preamble bits after 16-bit hardware sync");
     return 0;
 }
