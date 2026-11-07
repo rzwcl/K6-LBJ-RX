@@ -3,7 +3,7 @@
 更新时间：2026-11-07
 仓库：https://github.com/rzwcl/K6-LBJ-RX
 默认分支：`main`
-当前 main HEAD：1a73f4ec417e91231fdfb2ae95ea3694e4ba8637。
+当前 main HEAD：40746654a32f1d428b6b768957cda5f302092be4。
 
 ## 目标（不能偏离）
 
@@ -321,3 +321,16 @@ runtime `0x20000A80` 是 code offset `0x0800`；runtime `0x20000484` 是 code of
 6. 之后才从干净 LOSEHU 0.13.2 树分别建完整 LBJRX-K6 和 TDCSRX-K6 固件目标。现在仍无可刷BIN，不能让用户刷试验文件。
 
 **不要把独立9.6k quadrature reference detector称为“原版TDCSRX恢复成功”；也不要将当前DSP失败改成通过或删除。**
+
+
+## 2026-11-07 第五轮进展：原版 TDCSRX frame callback ABI
+
+- 原始 TDCSRX `0x0DB4` literal word 为 `0x20000815`，作为 Thumb 函数指针传给 `0x0950` DSP；其实际函数入口是 code offset `0x0594`（runtime `0x20000814`）。
+- `0x0950` 在帧完成后把保存的第三参数传入 `0x0800` collector；collector调用 frame parser成功后再调用该回调。第三参数因此确认是原应用 frame callback，不是任意的 DSP 上下文指针。
+- 回调将解析记录从 r0 复制到 global app object 的 `+4`：三次 12-byte LDM/STM 加一次4-byte LDR/STR，总计 **40 bytes**；之后更新计数/状态并调用 global display hook。
+- 先前报告把这个长度写成44 bytes，现已纠正。原因是 parser 的 `cmp r1,#0x2c` 检查的是输入45-byte frame的 last-index（44），不是输出记录大小。
+- parser 已确认输出字段偏移：prefix 0..3，train number +4，mileage +8..+0xB，loco serial +0x0C，weight +0x0E，length +0x10，speed +0x14，loco type +0x16，role +0x18，mileage flags +0x19..+0x1B，car count/station/track fields +0x1C onward，signal machine/kind +0x22/+0x23。部分 +0x1C..+0x21 的动态字段映射还需结合 parser 的动态索引和 display读引用继续确认。
+- `tdcsrx_message_t` 含 raw payload/frame/CRC 调试字段，不是40-byte app record。不可直接传给原应用 UI callback。完整的40-byte `tdcsrx_app_record_t` 及 conversion routine 尚未添加。
+- 本轮报告提交：`f78d130abd54f40196fdd965c1e424f5520f41bf`（reverse report）与 `40746654a32f1d428b6b768957cda5f302092be4`（signal path report）。该两次提交后的 protocol/frame tests 和 source package CI 均成功：runs `42349535251`、`42349535408`。
+
+下一步先完成 parser 的40-byte记录偏移映射，再逐指令对照 `0x0800` collector 怎样在帧解析成功时把40-byte记录交给回调；在此之前不要把host message struct当作原版结构。
