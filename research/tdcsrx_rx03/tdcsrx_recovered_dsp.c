@@ -200,18 +200,24 @@ static void update_discriminator(tdcsrx_audio_state_t *state,
                                  void *context)
 {
     tdcsrx_discriminator_t *lane = &state->discriminator[path_index];
-    int32_t positive_term;
-    int32_t negative_term;
+    int32_t term_1200;
+    int32_t term_1800;
     int32_t difference;
     int32_t phase;
     uint8_t current_bit;
     uint8_t previous_bit;
 
-    /* Target instruction order: (1800 * baseline1200 * weight1800)
-       minus (1200 * baseline1800 * weight1200). */
-    positive_term = wrap_mul_i32(normalized_1800, lane->weight_1800);
-    negative_term = wrap_mul_i32(normalized_1200, lane->weight_1200);
-    difference = wrap_sub_i32(positive_term, negative_term);
+    /*
+     * Exact Thumb instruction order at code offsets 0x0A54..0x0A60:
+     *   MUL normalized_1200, weight_1200
+     *   MUL normalized_1800, weight_1800
+     *   SUB first_term, second_term
+     * Therefore the discriminator is (1200 * baseline1800 * weight1200)
+     * minus (1800 * baseline1200 * weight1800).
+     */
+    term_1200 = wrap_mul_i32(normalized_1200, lane->weight_1200);
+    term_1800 = wrap_mul_i32(normalized_1800, lane->weight_1800);
+    difference = wrap_sub_i32(term_1200, term_1800);
 
     /* The target's ASRS/SUBS/LSRS sequence is exactly (difference > 0). */
     current_bit = (uint8_t)(difference > 0);
