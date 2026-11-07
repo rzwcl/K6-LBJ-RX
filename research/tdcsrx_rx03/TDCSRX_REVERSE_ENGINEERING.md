@@ -136,9 +136,16 @@ The original `0x0950` sample routine is now translated into
   states begin at parent offsets `0x88` and `0xC8`.
 
 All arithmetic in the translation explicitly models 32-bit wrap and ARM
-arithmetic right shifts. This reproduces the observed sample detector more
-closely than the earlier single-stream abstraction. It is still a host-side
-translation: no K6 ADC/audio route or BK4819 FIFO has been connected.
+arithmetic right shifts. However, the current deterministic end-to-end test
+feeding synthetic 9.6 ksample/s audio through the C translation does **not**
+acquire the target sync or deliver a frame. The protocol, BCH, CRC, and
+frame-collector tests pass, but the sample-to-bit translation is therefore
+still **unverified and not a working decoder**. The latest diagnostic records
+0 final-frame callbacks and a large bitstream mismatch; see
+[Actions run 42340865818](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42340865818).
+Do not use this DSP C path in a K6 firmware until this failure is resolved.
+The alternative K6 hardware front-end investigation is documented in
+[K6_BK4819_FIFO_ADAPTER.md](K6_BK4819_FIFO_ADAPTER.md).
 
 ## Sync acquisition, word collection and frame assembly at code offset 0x0800
 
@@ -292,6 +299,27 @@ two discriminators. Its exact integer approximation, saturation and smoothing
 are still being translated. The weights and phase-recovery structure above
 are literal/register-independent instruction evidence; the meaning of the
 two alternative weighting paths is not yet definitively named by the binary.
+
+## K6 BK4819 FIFO front-end research — candidate only
+
+The published railway protocol description in
+[CN202153314U section 3](https://patents.google.com/patent/CN202153314U/zh)
+specifies a 51-bit alternating bit-sync sequence followed by the 31-bit
+0x0DD4259F application sync. This aligns with the TDCSRX executable's
+31/32-bit rolling sync search. A candidate K6 handoff is to let BK4819 detect
+a two-byte alternating preamble marker, then preserve the remaining 35
+preamble bits and the actual 31-bit application sync in the FIFO stream for
+the recovered software collector. This preserves its two-bit sync tolerance.
+
+A host test for this handoff was added in commit
+b98b059c2c0e36699d71be05d0a178cc41dd8aea. It confirms only that the current
+software frame collector can decode a synthetic stream with a 35-bit
+alternating prefix before the 31-bit sync. It does not verify that the radio
+detects the proposed hardware marker or that FIFO byte/bit ordering matches
+the test.
+
+See [K6_BK4819_FIFO_ADAPTER.md](K6_BK4819_FIFO_ADAPTER.md) for the candidate
+register setup and required raw FIFO capture.
 
 ## K6 porting implications — not yet implemented or bench-verified
 
