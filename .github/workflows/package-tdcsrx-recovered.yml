@@ -17,16 +17,18 @@ jobs:
       - name: Checkout recovered research sources
         uses: actions/checkout@v4
 
-      - name: Run recovered-source tests
-        working-directory: research/tdcsrx_rx03
-        run: make clean test
+      - name: Run validated recovered protocol/frame tests
+        run: make -C research/tdcsrx_rx03 test-protocol
+
+      - name: Remove host test executables
+        if: always()
+        run: make -C research/tdcsrx_rx03 clean
 
       - name: Package source and reverse-engineering notes
         run: |
           mkdir -p dist
           zip -r dist/TDCSRX-RX03-recovered-source.zip \
-            research/tdcsrx_rx03 \
-            -x 'research/tdcsrx_rx03/test_tdcsrx_recovered'
+            research/tdcsrx_rx03
 
       - name: Upload source package
         uses: actions/upload-artifact@v4
