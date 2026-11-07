@@ -53,13 +53,13 @@ accumulators at state offsets `+0x14`, `+0x18`, `+0x1C`, and `+0x20`.
   harmonic of 600 Hz).
 
 The C module now contains a first-pass translation of the discriminator
-scale, smoothing, and decision-state updates. Two instruction-order mistakes
-were corrected: the discriminator subtraction was reversed in the first
-version, and the falling baseline update missed a shared ASRS #5 stage.
-The synthetic 9.6 ksample/s audio-to-frame test nevertheless still fails to
-acquire sync and produces zero frame callbacks. The latest failing run after
-those corrections is
-[Actions run 42341498682](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42341498682).
+scale, smoothing, and decision-state updates. The discriminator subtraction
+order was corrected, but a later attempt to interpret the falling-baseline
+branch added an extra ASRS #5 incorrectly. Disassembly shows the branch at
+0x01D2 targets 0x01C2, skipping the rising branch's ASRS #5; the C code and
+numeric test have now been corrected to falling decrement baseline>>10.
+A real 457.550 MHz recording is now used for an end-to-end probe; see
+[TDCSRX_REVERSE_ENGINEERING.md](TDCSRX_REVERSE_ENGINEERING.md).
 
 ## Sync, word and frame path at code offset 0x0800
 
@@ -160,3 +160,12 @@ the original sync/BCH/frame stages remain the reference. This is not yet
 verified for FIFO bit ordering, sync stripping or polarity on a K6.
 
 No receiver C code was changed in this documentation update.
+
+## Real audio comparison
+
+The pinned 457.550 MHz field recording has been added as a reproducible CI
+input (Git blob SHA-1 8fb409ef803a98c17834fa230410c4579b030a83). The
+independent 48 kHz demodulator finds the 31-bit sync at bit 1376 / 1.146667 s.
+The reconstructed 9.6 kHz C DSP currently fails on this real recording too:
+no complete frame, closest sync distances 7..10 bits, and aligned BER about
+0.32..0.40. Further instruction-level sample state tracing is required.
