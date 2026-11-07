@@ -105,9 +105,10 @@ coefficient tables and advances their phase counters on every 9,600 Hz sample:
   `dc >> 4` from the current sample.
 
 This is instruction/table evidence for 1,200 Hz and 1,800 Hz FFSK tone
-detection. The full fixed-point state update, correlator magnitude smoothing,
-discriminator decision threshold and exact event cadence are not yet
-translated into a cycle-accurate C implementation.
+detection. A first-pass C translation of the fixed-point state update,
+correlator magnitude helper, dual discriminator and phase event logic now
+exists. Its end-to-end synthetic 9.6 ksample/s audio-to-frame test still fails,
+so it is not a validated working sample-to-bit decoder.
 
 ## Exact sample DSP reconstruction from Thumb instructions
 
@@ -295,10 +296,12 @@ independent discriminator/clock recovery and sync/frame state.
 
 The helper called at code offset `0x0198` converts each I/Q accumulator pair
 (`+0x14/+0x18` and `+0x1C/+0x20`) into the magnitude values consumed by the
-two discriminators. Its exact integer approximation, saturation and smoothing
-are still being translated. The weights and phase-recovery structure above
-are literal/register-independent instruction evidence; the meaning of the
-two alternative weighting paths is not yet definitively named by the binary.
+two discriminators. Its integer approximation and asymmetric baseline update
+have now been translated into C. The discriminator arithmetic is
+`mag1200*smooth1800*weight1200 - mag1800*smooth1200*weight1800`, matching
+the multiply/subtract instruction order at code offsets `0x0A54..0x0A60`.
+These details are instruction-derived, but the synthetic audio-to-frame test
+still fails; they have not yet been validated as a functional decoder.
 
 ## K6 BK4819 FIFO front-end research — candidate only
 
@@ -348,8 +351,10 @@ the public LBJRX 0.4 source candidate and this TDCSRX 0.3 binary reconstruction.
 
 ## Remaining reverse-engineering work
 
-1. Finish translating the 1,200/1,800 Hz DSP fixed-point math, correlator smoothing,
-   discriminator threshold and event timing.
+1. Resolve the still-failing synthetic 9.6 ksample/s sample-to-bit test by
+   comparing captured intermediate I/Q, magnitude, baseline, discriminator
+   and phase values against instruction-level execution. Do not alter test
+   amplitudes merely to make the assertion pass.
 2. Finish validating the target's frame word-count logic and callback/reset
    lifecycle, especially malformed-frame recovery.
 3. Reconstruct all display formatting branches and settings/key behaviour
