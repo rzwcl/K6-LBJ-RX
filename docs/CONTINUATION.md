@@ -3,7 +3,7 @@
 更新时间：2026-11-07
 仓库：https://github.com/rzwcl/K6-LBJ-RX
 默认分支：`main`
-当前 main HEAD：以 GitHub main 分支实时指向为准；本次更新前为 a1c571c86e94f57a28b0f8e3f1a87f75f60bec79。
+当前 main HEAD：4f12c5ef664b2e4f31cf94030c62216e8430c617。
 
 ## 目标（不能偏离）
 
@@ -178,3 +178,90 @@ runtime `0x20000A80` 是 code offset `0x0800`；runtime `0x20000484` 是 code of
 5. 通过 ARM 编译、host tests、尺寸/CRC，再上K6做受控实机接收测试。未完成上述验证前不发布、不刷机。
 
 当前安全结论不变：仍无可刷入的 LBJRX-K6 或 TDCSRX-K6 完整固件。
+
+
+## 2026-11-07 第二轮进展：真实 TDCS 音频对照、CI 拆分、源码包已提交
+
+### GitHub main 最新提交
+
+当前 main HEAD：4f12c5ef664b2e4f31cf94030c62216e8430c617。
+
+本轮提交到 rzwcl/K6-LBJ-RX 的重要改动：
+
+| Commit | 文件/内容 | 结果 |
+|---|---|---|
+| 6ca52dd26db000ab833be7f14fd62d03900f18a9 | tdcsrx_recovered_dsp.c：按 Thumb 顺序修正判决减法 | 已合入；不代表 DSP 已通过 |
+| 1688ce5b91eab267e4709ebb12832b8fef69996d | tdcsrx_recovered_dsp.c：恢复 baseline 下降分支的正确跳转 | 已合入 |
+| 66a0d193ba220cc9458878bb1d5d97f5a3193bd | DSP baseline 数值断言 | 已合入 |
+| 583dc30de3c2def7556e0aebb5a9fe7ad796b11a | prepare_real_wav.py：固定真实 WAV 的 hash 校验、重采样/ADC 样本生成 | 已合入 |
+| 76e8459851f43fbf11d1691d54e9136b5c1d3cc3 | test_tdcsrx_real_wav.c：真实录音 DSP 探针 | 已合入 |
+| 81757d1e2166ed87e03924142c72c24178666ee6 | compare_real_wav_bits.py：与独立参考位流比较 | 已合入 |
+| de26c9a20504aefb99049f1be324a88dcfdf0f5f | 真实 WAV 诊断工作流上传逐样本数据和源文件 | 已合入 |
+| acdc575603d24c5a08873dead13c2c2816e74093 | Makefile：将 protocol/frame 测试与未通过的 DSP 诊断分开 | 已合入 |
+| b7086e5fa07bf243b020b3ce1a0ee2329746d94a | test-tdcsrx-recovered.yml：只运行已通过的协议/帧测试 | 已合入 |
+| f7a4746620bfddfe6cd8fb89774e50584c27c71c | package-tdcsrx-recovered.yml：通过协议/帧测试后打包源代码 | 已合入 |
+| 2a9df399f7a02e99568b683a1425595dff611bf9 | 更新 research/tdcsrx_rx03/README.md | 已合入 |
+| 4f12c5ef664b2e4f31cf94030c62216e8430c617 | 新增 TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md | 最新 main HEAD |
+
+注意：以上是研究源代码、测试、文档和 CI 文件的提交，不是 K6 固件提交；没有完整 K6 BIN，也没有刷机动作。
+
+### 真实 457.550 MHz WAV 对照结果
+
+固定样本：
+- 来源：rzwcl/450-TAx2
+- 文件：2026-10-11_17-30-46_audio_457550000Hz.wav
+- Git blob SHA-1：8fb409ef803a98c17834fa230410c4579b030a83
+- 22,050 Hz mono 16-bit PCM，37,418 samples，时长 1.696961 s。
+- 独立 48 kHz 参考解调在 bit 1376 / 1.146667 s 找到 31-bit sync，和原项目约 1.146593 s 的结果对应。
+- 参考帧记录：X319、20 km/h、CRC-16/XMODEM 0xB27A。
+
+转换为 9.6 kHz 后得到 16,291 个 ADC 样本。C DSP 对 ADC 增益 0.50–2.00 扫描仍没有完整帧回调。
+
+| 诊断项 | Path A（2:3） | Path B（3:2） |
+|---|---:|---:|
+| 1.00 增益下符号数 | 1,988 | 1,865 |
+| 1.00 增益下 bit=1 数 | 273 | 1,352 |
+| 最近参考同步字 Hamming distance | 9 | 7 |
+| 最佳对齐 BER | 0.3217 | 0.4038 |
+
+全增益范围内 Path A 最近同步字为 8–10 bit 错误，Path B 为 7 bit 错误；没有任何路径解出 X319 / 20 km/h / CRC 0xB27A。简单 8-sample 正交能量判决可达约 88.6% bit agreement，但这是非原版简化检测器，不可冒充原版 TDCSRX DSP，也不足以用于刷机。
+
+原始逐采样 trace、C 位流、48 kHz 参考位流、原 WAV 和9.6 kHz ADC样本保存在 Actions diagnostic artifact：
+- Workflow run：42344201505
+- Artifact：tdcsrx-real-wav-diagnostics-42344201505
+- 下载压缩包中包含 CSV 和所有 path bitstreams。
+- 完整测量和后续步骤见 research/tdcsrx_rx03/TDCSRX_REAL_WAV_DIAGNOSTIC_2026-11-07.md。
+
+### DSP 指令复核中修正的两个问题
+
+1. 判决减法顺序按 0x0A54..0x0A60 指令恢复为：
+   mag1200 * smooth1800 * weight1200 - mag1800 * smooth1200 * weight1800。
+   之前初版 C 写反，已改。
+2. baseline helper 的下降分支在 0x01D2 跳到 0x01C2，跳过上升分支的 ASRS #5。正确公式为 baseline - (baseline >> 10)，不是 >>15。之前的 >>15 试验已撤销，并同步修正测试和文档。
+
+这两项修正后真实 WAV 仍未通过；不要把它们理解成已经修好 sample-to-bit DSP。
+
+### CI 拆分和源代码包状态
+
+由于 DSP 端到端诊断仍失败，不应让它阻断已验证的协议/帧源码包，但也不能删掉失败测试：
+
+- GitHub Actions run 42344319294：Test recovered TDCSRX RX 0.3 protocol and frame path — success。
+- GitHub Actions run 42344319283：Package TDCSRX recovered source — success。
+- 成功生成源代码工件：TDCSRX-RX03-recovered-source（artifact id 13563360117）。
+- 该源代码包包含 20 个文件，含 protocol/stream/receiver/DSP C 源、头文件、测试、Makefile、README、逆向报告和 BK4819 FIFO adapter 文档。
+- GitHub Actions run 42344201505：真实 WAV DSP probe — failure；失败是保留的诊断结果，不是协议层测试失败，也未被隐藏。
+- 当前 Makefile 的 test / test-protocol 运行已通过的 protocol/frame 层；make test-dsp 单独保留未通过的样本到帧诊断。
+- 真实 WAV 探针由独立 test-tdcsrx-real-wav.yml 执行，并上传诊断工件。
+
+这意味着：**源代码和已验证协议/帧层已经提交到 GitHub；DSP 的真实音频端到端仍失败；不能宣称完整接收链完成。**
+
+### 当前下一步（按优先级）
+
+1. 取 run 42344201505 的 CSV，在 sync 周围逐样本重算 target_filter、4 个 I/Q 累积、两个 baseline、两条 diff 和 DPLL phase；逐条对齐 0x0950 的 Thumb 指令，而不是继续改振幅。
+2. 重点检查 +0x2E..+0x6D 的 8×4 int16 ring addressing、两张 tone lookup table 的实际字节、各次 STRH/LDRSH 的旧值/新值对应，必要时建立逐指令 Python reference model。
+3. 判断 Path A/B 的 false slicer transitions 和 DPLL phase event 漏计，解释为什么接近目标帧时间时分别比参考 bit index 少/多几十个符号。
+4. 若未来考虑 8-sample 正交算法作为备用，必须把它作为非原版替代算法隔离，不可以写进“原版 TDCSRX 移植已完成”的结论。
+5. 仍需通过受控信号源取得 K6 的 REG_02/REG_0B/REG_5D/REG_5E/REG_5F 原始 FIFO dump，确认 byte/bit order、hardware sync stripping、polarity、长度和重捕获。
+6. 在 DSP 与 BK4819 FIFO 两块未验证前，不开始发布/刷入 TDCSRX-K6 BIN。
+
+当前安全结论：原版 TDCSRX 的协议/帧层部分可读 C 重建已提交，protocol/frame 主机测试通过；原版 ADC DSP 的 C 重建仍未通过真实 WAV；BK4819 FIFO 与 K6 实机仍未验证。LBJRX bit decoder 的主机交接测试仍通过，但其 BK4819 FIFO 也尚未实测。没有可刷入的 LBJRX-K6 / TDCSRX-K6 完整固件。
