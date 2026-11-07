@@ -3,7 +3,7 @@
 更新时间：2026-11-07
 仓库：https://github.com/rzwcl/K6-LBJ-RX
 默认分支：`main`
-当前 main HEAD：86128fdf8e4683aaa98f8b978bf37dd2b949305c。
+当前 main HEAD：1a73f4ec417e91231fdfb2ae95ea3694e4ba8637。
 
 ## 目标（不能偏离）
 
@@ -278,3 +278,46 @@ runtime `0x20000A80` 是 code offset `0x0800`；runtime `0x20000484` 是 code of
 - 独立正交判决仅作为分析基准，不是原版 TDCSRX 0.3 DSP，也没有集成 K6 固件。
 
 当前 main 已提交全部上述源码、诊断脚本、CI、README、逆向报告和交接文档；本轮 protocol/frame CI 通过、source package workflow 通过，真实 DSP probe 保留失败。下一步继续做逐样本指令级差分，优先验证相关器 ring indexing 与 DPLL event timing；不要启动正式 K6 固件集成直到 sample-to-bit 路径和 BK4819 FIFO 交接都得到验证。
+
+
+## 2026-11-07 第四轮进展：参考位流已可独立通过，原 DSP 仍未通过
+
+### 本轮已提交到 rzwcl/K6-LBJ-RX
+
+- ab75c8e80b4762fd2ca12ba77d2132da587c0a4c：修正 synthetic FFSK fixture 的 1200/1800 幅度方向（原先把“1”的 1200Hz 振幅设置得比“0”的 1800Hz 还小）。
+- ea61ea31b5a6672b13f9f3420291c11cfb66f79f：真实 WAV workflow 额外运行独立 test-dsp 诊断，保留失败结果而不阻断后续对比/上传。
+- dabe152ae8c0afc3eab7437933d3df3e9f00a43d：将合成输入试验调整为 1000:400。
+- 57b460383d76e45a0268a9f8ed59150208849bfd：确保 synthetic DSP test 文件变更也能触发真实音频诊断 workflow。
+- 401b4d11824e2cf6a52d9997e900d8bdf46bd246：合成 FFSK fixture 改为 1200:300，并保持独立 WAV reference 对照。
+- 8a63b4e89d6370cc5fc28244120724948104bbfd：合成 FFSK fixture 扩大到 1200:150（8:1 输入振幅比）。
+- dcf34b4a2d676e23662f438915f3e6f758fd9000：补充真实 WAV 独立 9.6 kHz detector 成功记录和 8:1 synthetic 仍失败的数据。
+- 729a76ceaea58e60f376aa424cd134d58be8d8a5：更新 TDCSRX README 的成熟度划分。
+- d7d642fcd7fa493dcbeda33979387d09ba15e811：更新 sample-to-bit 路径报告。
+- 1a73f4ec417e91231fdfb2ae95ea3694e4ba8637：更新反汇编报告，补入独立 reference frame pass 和 synthetic DSP failure。
+- 本轮结束时 main HEAD：1a73f4ec417e91231fdfb2ae95ea3694e4ba8637。
+
+### CI 状态（不能混为一谈）
+
+- 42348715484：Test recovered TDCSRX protocol/frame path — success。
+- 42348715565：Package TDCSRX recovered source — success。
+- 42348715488：Synthetic + real 457.550MHz DSP probe — failure，失败保留，没有删断言。
+- 同一真实 WAV run 中，独立 9.6kHz quadrature reference detector 能解出 BCH/CRC 通过帧；原版 DSP C 路径仍回调 0。
+- 8:1 synthetic FFSK fixture 也不能通过：输入逻辑位 694 个，两路 DSP 各输出约831/825个符号；交替前导码早期，Path A 的差分保持负，Path B 保持正，没有形成两条互补的正确位流。
+
+### 现在能确认的边界
+
+1. **协议/帧层**：BCH(26,16)、sync/polarity、最多2-bit sync tolerance、双 collector、45-byte parser、CRC-16/XMODEM 有 host tests；protocol/frame CI 通过。
+2. **独立 reference detector**：针对固定 457.550MHz WAV，9.6kHz 的8-sample正交能量判决在相位0、sync bit259处恢复完整帧；BCH纠错0、header/padding有效、CRC B27A/B27A，解析为 X319、20km/h。这不是原版TDCSRX DSP。
+3. **原版 DSP 逆向 C 翻译**：仍未通过。真实 WAV 下没有frame callback，C与reference位流的BER约0.32–0.40；8:1合成fixture同样未通过。
+4. **BK4819 FIFO**：只是候选适配方案；没有 K6 原始寄存器/FIFO dump，位序、字节序、硬件sync剥离、极性、长度/连续接收尚未实测。
+
+### 下一步（按证据顺序）
+
+1. 建立逐指令 reference model，逐样本复算 0x0950：DC/biquad、8x4 ring history、4组 I/Q 累积、0x0198 两个baseline、cross-normalization、两个权重差分、previous sign、phase correction及collector调用。对 synthetic 和真实 WAV 分别做 C vs reference model 对比。
+2. 在 synthetic 测试的 audio_feed_bit() 内部记录每个输入bit的8次 sample：每sample的差分符号、phase before/after、是否wrap/emit；不要再靠扫输入振幅改变结果。
+3. 核对 0x0950 调用 0x0800 时第三个参数的语义（调用者传入的是 literal-pool 指针），以及 0x0800 中collector回调/数据生命周期；host parser接口目前只模型了接收到位后的协议部分。
+4. 并行维持 BK4819 raw FIFO capture 方案；没有实际寄存器数据前不写生产 tdcsrx_bk4819.c，也不采用猜测的 REG_5D=0x5200。
+5. LBJ 继续沿原版 lbj_rx_bit() 做 BK4819 direct-FSK FIFO交接；其残余560-bit POCSAG preamble host test已通过，但同样没有实机fifo格式验证。
+6. 之后才从干净 LOSEHU 0.13.2 树分别建完整 LBJRX-K6 和 TDCSRX-K6 固件目标。现在仍无可刷BIN，不能让用户刷试验文件。
+
+**不要把独立9.6k quadrature reference detector称为“原版TDCSRX恢复成功”；也不要将当前DSP失败改成通过或删除。**
