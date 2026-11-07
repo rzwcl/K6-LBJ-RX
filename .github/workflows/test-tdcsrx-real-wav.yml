@@ -39,7 +39,7 @@ jobs:
           make -C research/tdcsrx_rx03 probe-real-wav SAMPLE_BIN="$GITHUB_WORKSPACE/sample-9600-adc.bin"
           probe_status=$?
           set -e
-          python3 research/tdcsrx_rx03/compare_real_wav_bits.py sample-48k.wav
+          python3 research/tdcsrx_rx03/compare_real_wav_bits.py sample-48k.wav sample-9600-adc.bin
           exit $probe_status
       - name: Upload real-WAV DSP diagnostics
         if: always()
