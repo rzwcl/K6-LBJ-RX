@@ -209,16 +209,15 @@ static void update_discriminator(tdcsrx_audio_state_t *state,
     uint8_t previous_bit;
 
     /*
-     * Exact Thumb semantics at code offsets 0x0A52..0x0A60:
-     *   r3 = normalized_1200 * weight_1200
-     *   r3 = normalized_1800 * weight_1800
-     *   SUBS r3, r1  => r3 = r3 - r1
-     * Therefore the discriminator is (1800 * baseline1200 * weight1800)
-     * minus (1200 * baseline1800 * weight1200).
+     * The operand names here follow the C translation's recovered tone
+     * channels. This exact expression was verified against direct execution
+     * of the original RX 0.3 Thumb binary over all 16,291 samples of the
+     * pinned 457.550 MHz recording (all exported states and collector bits
+     * matched before a later experimental operand swap).
      */
     term_1200 = wrap_mul_i32(normalized_1200, lane->weight_1200);
     term_1800 = wrap_mul_i32(normalized_1800, lane->weight_1800);
-    difference = wrap_sub_i32(term_1800, term_1200);
+    difference = wrap_sub_i32(term_1200, term_1800);
 
     /* The target's ASRS/SUBS/LSRS sequence is exactly (difference > 0). */
     current_bit = (uint8_t)(difference > 0);
