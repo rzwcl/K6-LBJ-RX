@@ -409,7 +409,7 @@ Do not tune audio gain further until ring-history and state-update behaviour
 has been matched instruction by instruction.
 
 
-## Original frame callback and 44-byte application record
+## Original frame callback and 40-byte application record
 
 The caller at code offset 0x0D02 loads the third argument for the 0x0950
 sample routine from literal-pool word 0x20000815 (code literal at 0x0DB4).
@@ -418,11 +418,16 @@ application frame callback.
 
 The callback's first instructions load the global application object pointer
 from literal address 0x20000898; the literal value is 0x200011A4. It receives
-the decoded record pointer in r0, copies exactly 0x2C bytes (44 bytes) into
-the application's current-record/history area, updates the record counters
-and invokes the application display hook stored in the global object. This
-establishes that the 0x0800 collector's third argument is a frame callback,
-not a generic DSP-state pointer.
+the decoded record pointer in r0 and copies exactly 40 bytes (three 12-byte
+LDM/STM groups plus one 4-byte LDR/STR) to global-object offset +4. It then
+updates record counters and invokes the application display hook stored in
+the global object. This establishes that the 0x0800 collector's third
+argument is a frame callback, not a generic DSP-state pointer.
+
+The parser's `cmp r1,#0x2c` at code offset 0x061C checks the last-index
+argument for the 45-byte input frame (valid last index 44); it is **not** the
+size of the compact output record. The callback copy sequence proves a
+40-byte record transfer.
 
 The recovered frame parser at code offset 0x061C writes a compact record
 through its output pointer. Confirmed output offsets include:
@@ -437,12 +442,13 @@ through its output pointer. Confirmed output offsets include:
 - +0x19..+0x1B: mileage-present, mileage-negative and mileage-direction flags;
 - +0x22..+0x23: signal-machine and signal-kind codes.
 Other output bytes are also written by the parser, including mileage and
-station/track-related fields; their complete 44-byte map is still being
-recovered from the remaining stores and display reads.
+station/track-related fields. The callback transfers 40 bytes, but their
+complete 40-byte map is still being recovered from the remaining stores and
+display reads.
 
 Important ABI distinction: the current host convenience type tdcsrx_message_t
 includes raw payload, raw frame and calculated/received CRC for diagnostics.
-It is **not** the original 44-byte application record and must not be passed
+It is **not** the original 40-byte application record and must not be passed
 directly to a reconstructed original UI callback. A K6-portable
- tdcsrx_app_record_t and explicit conversion routine still need to be added
+tdcsrx_app_record_t and explicit conversion routine still need to be added
 after the remaining target record offsets are mapped.
