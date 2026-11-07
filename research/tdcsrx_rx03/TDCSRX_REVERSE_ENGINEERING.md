@@ -365,3 +365,31 @@ the public LBJRX 0.4 source candidate and this TDCSRX 0.3 binary reconstruction.
 
 No K6 receiver source code has been changed as part of this reverse-engineering
 update.
+
+## Real 457.550 MHz WAV probe (2026-11-07)
+
+A tracked recording in `rzwcl/450-TAx2`,
+`2026-10-11_17-30-46_audio_457550000Hz.wav`, was fetched in GitHub Actions
+and verified against Git blob SHA-1
+`8fb409ef803a98c17834fa230410c4579b030a83`. It is mono 16-bit PCM,
+22,050 Hz, 1.696961 s. The independent 48 kHz reference demodulator
+reproduces the exact 31-bit sync at bit 1,376 / 1.146667 s, matching the
+recording analysis position (~1.146593 s).
+
+The current sample-to-bit C translation was run on a sinc-resampled 9.6 kHz
+unsigned-12-bit representation of the same recording. Across ADC scale factors
+0.50..2.00 it still delivered zero frames. C bitstream comparison showed
+path A's nearest 31-bit sync at Hamming distance 8..10; path B's nearest was
+7. The aligned bit error rates were approximately 0.32..0.40. Therefore this
+is a confirmed real-waveform mismatch, not merely a synthetic-fixture problem.
+
+Probe and comparison files:
+- `test_tdcsrx_real_wav.c`
+- `prepare_real_wav.py`
+- `compare_real_wav_bits.py`
+- workflow `.github/workflows/test-tdcsrx-real-wav.yml`
+
+The next DSP task is to compare the target's per-sample correlator magnitudes,
+baseline states and decision signs against the reference waveform around the
+known sync; do not tune the audio gain until the arithmetic/state mismatch is
+identified.
