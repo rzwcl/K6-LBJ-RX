@@ -23,6 +23,45 @@ def projection(frequency):
 Q1200 = projection(1200.0)
 Q1800 = projection(1800.0)
 
+def projection_9600(frequency):
+    n = np.arange(8, dtype=np.float64)
+    w = 2.0 * np.pi * frequency * n / 9600.0
+    matrix = np.column_stack((np.cos(w), np.sin(w), np.ones(8)))
+    q, _ = np.linalg.qr(matrix)
+    return q.astype(np.float32)
+
+
+Q1200_9600 = projection_9600(1200.0)
+Q1800_9600 = projection_9600(1800.0)
+
+
+def compare_simple_9600(adc_path, ref_bits):
+    raw = np.fromfile(adc_path, dtype="<u2")
+    if raw.size == 0 or np.any(raw > 4095):
+        raise SystemExit("9.6 kHz ADC file must contain unsigned 12-bit samples in u16le")
+    samples = raw.astype(np.float32) - 2048.0
+    best = (0.0, None, None, None)
+
+    for phase in range(8):
+        count = min((len(samples) - phase) // 8, len(ref_bits))
+        if count <= 0:
+            continue
+        windows = samples[phase:phase + count * 8].reshape(count, 8)
+        e1200 = np.sum((windows @ Q1200_9600) ** 2, axis=1)
+        e1800 = np.sum((windows @ Q1800_9600) ** 2, axis=1)
+        decisions = e1200 > e1800
+        reference = np.fromiter((bit == "1" for bit in ref_bits[:count]),
+                                dtype=np.bool_, count=count)
+        accuracy = float(np.mean(decisions == reference))
+        if accuracy > best[0]:
+            best = (accuracy, phase, int(np.count_nonzero(decisions)), count)
+
+    accuracy, phase, ones, count = best
+    print(f"SIMPLE_9600_QUADRATURE best_phase={phase} "
+          f"bit_agreement={accuracy:.4f} ones={ones}/{count}")
+    print("NOTE: this is an independent 8-sample reference detector, not the recovered TDCSRX DSP.")
+    return accuracy
+
 
 def load_pcm(path):
     with wave.open(path, "rb") as wav:
@@ -97,10 +136,11 @@ def compare(c_bits, ref_bits, ref_sync):
 
 
 def main():
-    if len(__import__("sys").argv) != 2:
-        raise SystemExit("usage: compare_real_wav_bits.py SAMPLE_48K.wav")
+    if len(__import__("sys").argv) != 3:
+        raise SystemExit("usage: compare_real_wav_bits.py SAMPLE_48K.wav SAMPLE_9600_ADC_U16LE.bin")
     samples = load_pcm(__import__("sys").argv[1])
     ref_sync, ref_bits = reference_bits(samples)
+    compare_simple_9600(__import__("sys").argv[2], ref_bits)
     found = sorted(glob.glob("research/tdcsrx_rx03/tdcsrx_path*_scale_*.bits"))
     if not found:
         raise SystemExit("no exported C discriminator bitstreams found")
