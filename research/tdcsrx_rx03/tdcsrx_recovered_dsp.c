@@ -129,16 +129,13 @@ int32_t tdcsrx_audio_magnitude(int32_t i_value,
 
     /*
      * Original asymmetric smoother (instruction offsets 0x01BC..0x01D2):
-     *   rising:  baseline += (magnitude-baseline)>>5
-     *   falling: baseline += (-(baseline>>10))>>5
-     * The shared ASRS #5 means the falling decrement is baseline>>15,
-     * not baseline>>10.
+     * rising:  ASRS #5 then add the baseline;
+     * falling: ASRS #10, negate, then branch directly to the add at 0x01C2.
+     * The falling branch deliberately skips the rising branch's ASRS #5.
      */
     if (previous >= (int32_t)magnitude) {
-        const int32_t negative_quarter =
-            wrap_sub_i32(0, arithmetic_shift_right(previous, 10u));
-        next = wrap_add_i32(previous,
-                            arithmetic_shift_right(negative_quarter, 5u));
+        const int32_t decrement = arithmetic_shift_right(previous, 10u);
+        next = wrap_sub_i32(previous, decrement);
     } else {
         const int32_t delta =
             wrap_sub_i32((int32_t)magnitude, previous);
