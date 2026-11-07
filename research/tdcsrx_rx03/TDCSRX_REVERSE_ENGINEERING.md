@@ -380,8 +380,20 @@ The current sample-to-bit C translation was run on a sinc-resampled 9.6 kHz
 unsigned-12-bit representation of the same recording. Across ADC scale factors
 0.50..2.00 it still delivered zero frames. C bitstream comparison showed
 path A's nearest 31-bit sync at Hamming distance 8..10; path B's nearest was
-7. The aligned bit error rates were approximately 0.32..0.40. Therefore this
-is a confirmed real-waveform mismatch, not merely a synthetic-fixture problem.
+7. The aligned bit error rates were approximately 0.32..0.40.
+
+Separately, an independent 8-sample quadrature-energy detector at the same
+9.6 kHz sample rate recovered the complete frame from this ADC file:
+sync bit 259, BCH corrections 0, header/padding valid, CRC B27A/B27A,
+train X319 and speed 20 km/h. This establishes that the WAV contains enough
+information to recover the frame; it is not the original target DSP.
+
+The synthetic DSP-to-frame test also still fails after widening the 1200:1800
+input amplitude ratio to 8:1. It produces about 831/825 output symbols for
+694 expected bits. In the early alternating preamble, lane A's weighted
+difference stays negative and lane B's stays positive for both bit values,
+so the two lanes do not form the required complementary data stream. See
+[Actions run 42348715488](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42348715488).
 
 Probe and comparison files:
 - `test_tdcsrx_real_wav.c`
@@ -391,5 +403,7 @@ Probe and comparison files:
 
 The next DSP task is to compare the target's per-sample correlator magnitudes,
 baseline states and decision signs against the reference waveform around the
-known sync; do not tune the audio gain until the arithmetic/state mismatch is
-identified.
+known sync. For the synthetic case, trace every one of the 8 sample updates
+inside each symbol and log both discriminator sign changes and phase wraps.
+Do not tune audio gain further until ring-history and state-update behaviour
+has been matched instruction by instruction.
