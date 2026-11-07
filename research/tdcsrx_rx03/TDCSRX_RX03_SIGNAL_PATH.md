@@ -193,3 +193,18 @@ claim the original sample DSP is complete. The next investigation is a per-sampl
 instruction-level model of the history ring, I/Q accumulators, 0x0198 baseline
 helper, weighted differences, sign transitions, phase correction, and collector
 call timing.
+
+## Original application callback ABI (newly recovered)
+
+The caller's third argument to the 0x0950 DSP is a function pointer loaded
+from code literal 0x0DB4: value 0x20000815, Thumb entry for code offset
+0x0594. The callback receives the parser's compact output record, copies
+exactly 0x2C (44) bytes into the application record/history area, updates
+record counters, and invokes the application display hook.
+
+The host reconstruction currently passes a generic C callback a
+ tdcsrx_message_t that also contains raw payload/frame and CRC diagnostics.
+That object is not ABI-compatible with the original 44-byte application
+record. Do not treat the host message struct as the original UI record. The
+remaining offsets and a portable explicit record-conversion routine are
+still to be reconstructed.
