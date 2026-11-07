@@ -77,7 +77,7 @@ def min_sync_error(bits, expected_pos, radius=100):
 def compare(c_bits, ref_bits, ref_sync):
     # Align by the frame sync location first; the hardware DSP has its own
     # phase accumulator, so allow a small symbol-count offset.
-    best = (0.0, None, None)
+    best = (1.0, None, None)
     for invert in (False, True):
         source = c_bits if not invert else "".join("1" if b == "0" else "0" for b in c_bits)
         for delta in range(-80, 81):
@@ -91,7 +91,7 @@ def compare(c_bits, ref_bits, ref_sync):
             errors = sum(a != b for a, b in zip(source[c_start:c_start + length],
                                                 ref_bits[r_start:r_start + length]))
             ratio = errors / length
-            if ratio > best[0]:
+            if ratio < best[0]:
                 best = (ratio, delta, invert)
     return best
 
@@ -101,7 +101,7 @@ def main():
         raise SystemExit("usage: compare_real_wav_bits.py SAMPLE_48K.wav")
     samples = load_pcm(__import__("sys").argv[1])
     ref_sync, ref_bits = reference_bits(samples)
-    found = sorted(glob.glob("tdcsrx_path*_scale_*.bits"))
+    found = sorted(glob.glob("research/tdcsrx_rx03/tdcsrx_path*_scale_*.bits"))
     if not found:
         raise SystemExit("no exported C discriminator bitstreams found")
 
