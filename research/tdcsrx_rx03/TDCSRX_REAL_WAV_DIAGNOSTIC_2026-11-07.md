@@ -25,7 +25,15 @@ GitHub Actions 在下载后验证 Git blob SHA-1，防止样本发生变化或�
 
 样本被带限重采样到 9,600 Hz，得到 16,291 个 ADC 样本。重采样后去 DC，再映射到 unsigned 12-bit、中心值 2048 的样本范围。测试对 ADC 交流分量分别乘以 0.50、0.75、1.00、1.25、1.50、2.00，检查不同增益能否恢复。
 
-SoX 直接重采样对照得到近似的 9.6 kHz 波形；简单 8-sample、1200/1800 Hz 正交能量判决在最佳采样相位下约有 88.3% 的 bit agreement（最新 CI run 42344820815 输出 0.8831）。这个简化判决只用于判断音频本身是否保留两种音调，不是原版 TDCSRX 的实现，也不足以单独通过 31-bit sync、BCH、CRC。
+SoX 直接重采样对照得到近似的 9.6 kHz 波形。独立 8-sample、1200/1800 Hz 正交能量判决不只给出约 88.3% 的 bit agreement；它还能在 9.6 kHz 样本中找到完整帧并通过原样 BCH/CRC 检查（run 42345120801、42348376324、42348715488 均有记录）：
+
+- 采样相位 0：sync bit 259；
+- BCH 纠错数 0，23 个码字均可解；
+- 帧头检查通过、padding=0；
+- CRC-16/XMODEM：收到 B27A / 计算 B27A；
+- 解析字段与独立记录一致：X319、20 km/h。
+
+这证明该 WAV 的音频含有足以恢复有效 TDCS 帧的信息，也验证了协议/BCH/CRC 链；但这个简单 detector 是**独立参考算法，不是原版 TDCSRX 0.3 DSP**，不能替代原版 DSP 的恢复。
 
 ## 当前 C DSP 的实测结果
 
@@ -88,3 +96,28 @@ GitHub Actions run 42344201505 上传了以下诊断工件（artifact）：
 5. 只有真实录音端到端通过、并完成 BK4819 FIFO 的位序/极性/同步剥离实测后，才进入完整 K6 固件集成。
 
 **当前结论：协议/帧层主机测试可通过；DSP sample-to-bit 未通过真实 WAV；BK4819 FIFO/实机接收未验证；没有可刷入的 TDCSRX-K6 固件。**
+
+
+## 2026-11-07 后续 synthetic DSP 检查
+
+为了区分判决门限不足与更深层的时钟/相关器错误，受控合成音频 fixture 已依次测试 1200:1800 输入振幅比 1000:650、1000:400、1200:300、1200:150（最后一组为 8:1）。这些变化没有让原版 C DSP 的样本到帧链通过，因此现在停止继续靠放大某一音调来“调绿”测试。
+
+最新可复现记录：
+- commit `8a63b4e89d6370cc5fc28244120724948104bbfd`；
+- protocol/frame workflow run `42348715484`：success；
+- recovered-source package run `42348715565`：success；
+- synthetic/real-WAV DSP probe run `42348715488`：failure。
+
+8:1 fixture 的 DSP 诊断：
+- 输入应产生 694 个逻辑位；两条 lane 实际各产生约 831 / 825 个输出符号；
+- 在交替前导码早期，bit=0 时归一化差分仍为 A=-9022、B=+2562；bit=1 时为 A=-57474、B=+476429。即此时 Path A 保持 0、Path B 保持 1，没有形成所需的互补数据位；
+- 没有完整帧回调，test_full_9600_hz_audio_to_frame 断言失败；
+- 同一 run 的独立 9.6 kHz quadrature reference detector 仍解出 CRC B27A 的 X319 帧。
+
+因此当前最明确的故障边界是：
+
+1. 45-byte frame parser、BCH、CRC、两条 collector 与预期 residual-preamble handoff 已分别通过主机测试；
+2. 独立的简化 9.6 kHz detector 可以从 WAV 解出正确帧；
+3. 逆向恢复的原版双路相关器/基线交叉归一化/DPLL C 链仍不能从同一数据正确输出位流。
+
+下一步不是再扫音量，而是建立逐指令参考模型，对原二进制的 ring history 读写、I/Q 值、helper输入/输出、两个 baseline、两路 diff、previous sign、phase correction 和 frame collector 调用逐采样比较。没有比对证据前不应改生产 DSP 公式。
