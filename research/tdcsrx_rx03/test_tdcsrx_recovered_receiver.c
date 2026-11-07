@@ -127,6 +127,87 @@ static void feed_frame(tdcsrx_receiver_t *receiver,
     }
 }
 
+static void feed_frame_after_preamble_sync(tdcsrx_receiver_t *receiver,
+                                                uint8_t path_index,
+                                                const uint8_t frame[TDCSRX_FRAME_SIZE],
+                                                bool inverted,
+                                                uint32_t sync_error_mask,
+                                                tdcsrx_frame_callback_t callback,
+                                                void *context)
+{
+    unsigned int bit;
+    unsigned int i;
+    uint8_t padded[TDCSRX_RX_FRAME_BUFFER_SIZE];
+
+    memset(padded, 0, sizeof(padded));
+    memcpy(padded, frame, TDCSRX_FRAME_SIZE);
+
+    /*
+     * The published railway protocol specifies 51 alternating bit-sync bits.
+     * Model the BK4819 having consumed the first 16 as its two-byte hardware
+     * sync: 35 alternating bits remain in the FIFO ahead of the 31-bit
+     * application frame sync. This deliberately keeps the application sync
+     * in the software receiver so its <=2-bit tolerance is retained.
+     */
+    for (bit = 0u; bit < 35u; ++bit) {
+        uint8_t value = (uint8_t)(bit & 1u);
+        if (inverted)
+            value ^= 1u;
+        tdcsrx_receiver_feed_bit(receiver, path_index, value,
+                                 callback, context);
+    }
+
+    for (bit = 0u; bit < 31u; ++bit) {
+        uint8_t value =
+            (uint8_t)((TDCSRX_SYNC_WORD >> (30u - bit)) & 1u);
+        if ((sync_error_mask & (1u << bit)) != 0u)
+            value ^= 1u;
+        if (inverted)
+            value ^= 1u;
+        tdcsrx_receiver_feed_bit(receiver, path_index, value,
+                                 callback, context);
+    }
+
+    /* The 45-byte application frame is carried in 23 MSB-first 26-bit words. */
+    for (i = 0u; i < TDCSRX_RX_FRAME_BUFFER_SIZE; i += 2u) {
+        uint16_t word = (uint16_t)(((uint16_t)padded[i] << 8) | padded[i + 1u]);
+        uint32_t codeword = make_bch_codeword(word);
+
+        for (bit = 0u; bit < TDCSRX_CODEWORD_BITS; ++bit) {
+            uint8_t value =
+                (uint8_t)((codeword >> (TDCSRX_CODEWORD_BITS - 1u - bit)) & 1u);
+            if (inverted)
+                value ^= 1u;
+            tdcsrx_receiver_feed_bit(receiver, path_index, value,
+                                     callback, context);
+        }
+    }
+}
+
+static void test_two_byte_preamble_sync_handoff(void)
+{
+    tdcsrx_receiver_t receiver;
+    capture_t capture;
+    uint8_t frame_a[TDCSRX_FRAME_SIZE];
+    uint8_t frame_b[TDCSRX_FRAME_SIZE];
+
+    memset(&capture, 0, sizeof(capture));
+    tdcsrx_receiver_init(&receiver);
+    make_frame(frame_a, 0);
+    make_frame(frame_b, 1);
+
+    feed_frame_after_preamble_sync(&receiver, 0u, frame_a, false,
+                                   (1u << 4) | (1u << 19),
+                                   capture_frame, &capture);
+    feed_frame_after_preamble_sync(&receiver, 1u, frame_b, true, 0u,
+                                   capture_frame, &capture);
+
+    assert(capture.calls == 2u);
+    assert(capture.path == 1u);
+    assert(capture.message.train_number == 7654321u);
+    assert(capture.message.received_crc == capture.message.calculated_crc);
+}
+
 static void test_complete_frame_path_a(void)
 {
     tdcsrx_receiver_t receiver;
@@ -291,6 +372,7 @@ static void test_reacquire_after_frame(void)
 
 int main(void)
 {
+    test_two_byte_preamble_sync_handoff();
     test_complete_frame_path_a();
     test_complete_inverted_frame_path_b();
     test_bad_crc_not_delivered();
@@ -306,5 +388,6 @@ int main(void)
     puts("- invalid CRC/header rejected");
     puts("- two independent paths interleaved without state sharing");
     puts("- sync reacquisition after a completed frame");
+    puts("- 35-bit residual alternating preamble after a 16-bit hardware sync");
     return 0;
 }
