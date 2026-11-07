@@ -96,6 +96,71 @@ bool tdcsrx_parse_frame(const uint8_t *frame, size_t frame_length,
     return true;
 }
 
+bool tdcsrx_build_app_record(const uint8_t *frame, size_t frame_length,
+                             tdcsrx_app_record_t *out)
+{
+    tdcsrx_message_t validated;
+    uint16_t speed;
+    bool mileage_is_all_ff;
+
+    if (out == NULL || !tdcsrx_parse_frame(frame, frame_length, &validated))
+        return false;
+
+    memset(out, 0, sizeof(*out));
+
+    memcpy(out->train_prefix, frame + 0x0e, sizeof(out->train_prefix));
+    memcpy(out->train_number_le, frame + 0x12, 3u);
+    out->train_number_le[3] = 0u;
+
+    out->mileage_magnitude_le[0] = frame[0x19];
+    out->mileage_magnitude_le[1] = frame[0x1a];
+    out->mileage_magnitude_le[2] = (uint8_t)(frame[0x1b] & 0x3fu);
+    out->mileage_magnitude_le[3] = 0u;
+
+    memcpy(out->locomotive_serial_le, frame + 0x17, 2u);
+    memcpy(out->total_weight_le, frame + 0x1f, 2u);
+    memcpy(out->calculated_length_le, frame + 0x21, 2u);
+
+    out->auxiliary_12_13[0] = frame[0x28];
+    out->auxiliary_12_13[1] = frame[0x29];
+
+    speed = (uint16_t)((uint16_t)frame[0x1c] |
+                       ((uint16_t)frame[0x1d] << 8));
+    speed &= 0x03ffu;
+    out->speed_le[0] = (uint8_t)speed;
+    out->speed_le[1] = (uint8_t)(speed >> 8);
+
+    memcpy(out->locomotive_type_le, frame + 0x15, 2u);
+    out->locomotive_role = (uint8_t)(frame[0x0d] & 0x03u);
+
+    mileage_is_all_ff = frame[0x19] == 0xffu &&
+                        frame[0x1a] == 0xffu &&
+                        frame[0x1b] == 0xffu;
+    out->mileage_present = mileage_is_all_ff ? 0u : 1u;
+    out->mileage_negative = (uint8_t)(frame[0x1b] >> 7);
+    out->mileage_direction = (uint8_t)((frame[0x1b] >> 6) & 1u);
+
+    out->car_count = frame[0x23];
+    memcpy(out->station_number_le, frame + 0x24, 2u);
+    out->frame_26_copy = frame[0x26];
+    out->frame_27_copy = frame[0x27];
+    out->frame_2a_copy = frame[0x2a];
+    out->signal_machine = (uint8_t)(frame[0x0b] & 0x0fu);
+    out->signal_kind = (uint8_t)(frame[0x0c] & 0x07u);
+    out->header_variant =
+        (uint8_t)(frame[7] == 0xffu && frame[8] == 0xffu &&
+                  frame[9] == 0xffu);
+    out->fixed_index_one = 1u;
+
+    /*
+     * Original parser leaves +0x26..+0x27 untouched. Zero them here so the
+     * callback-compatible record is deterministic and never leaks stale RAM.
+     */
+    out->reserved_26_27[0] = 0u;
+    out->reserved_26_27[1] = 0u;
+    return true;
+}
+
 uint16_t tdcsrx_original_syndrome(uint32_t codeword26)
 {
     int bit;
