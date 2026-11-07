@@ -236,8 +236,8 @@ def print_result(
     print(
         f"PARSER train={train_number} accepted={result} "
         f"leading_digit_quotient={quotient} remainder={remainder} divisor={divisor} "
-        "dynamic_record_offsets=0x12..0x13,0x1F..0x20 "
-        "dynamic_frame_indices=0x28..0x29,0x26..0x27"
+        "fixed_index_one_copies=record[0x12..0x13]<-frame[0x28..0x29],"
+        "record[0x1F..0x20]<-frame[0x26..0x27]"
     )
     print("  record40=" + compact.hex(" ").upper())
     print(
