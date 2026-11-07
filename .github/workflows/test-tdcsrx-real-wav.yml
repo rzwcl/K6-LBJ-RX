@@ -33,6 +33,9 @@ jobs:
         run: |
           python3 research/tdcsrx_rx03/prepare_real_wav.py sample.wav sample-9600-adc.bin
           sox sample.wav -b 16 -e signed-integer -c 1 -r 48000 sample-48k.wav rate -h 48000
+      - name: Run synthetic 9.6 kHz DSP-to-frame diagnostic
+        continue-on-error: true
+        run: make -C research/tdcsrx_rx03 test-dsp
       - name: Run recovered target DSP and compare decisions with reference
         run: |
           set +e
