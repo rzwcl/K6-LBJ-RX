@@ -53,11 +53,13 @@ accumulators at state offsets `+0x14`, `+0x18`, `+0x1C`, and `+0x20`.
   harmonic of 600 Hz).
 
 The C module now contains a first-pass translation of the discriminator
-scale, smoothing, and decision-state updates. It is **not validated as a
-working sample-to-bit decoder**: the current synthetic 9.6 ksample/s
-audio-to-frame test fails to acquire sync and produces zero frame callbacks.
-The protocol/frame tests pass separately. The failure is preserved in
-[Actions run 42340865818](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42340865818).
+scale, smoothing, and decision-state updates. Two instruction-order mistakes
+were corrected: the discriminator subtraction was reversed in the first
+version, and the falling baseline update missed a shared ASRS #5 stage.
+The synthetic 9.6 ksample/s audio-to-frame test nevertheless still fails to
+acquire sync and produces zero frame callbacks. The latest failing run after
+those corrections is
+[Actions run 42341498682](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42341498682).
 
 ## Sync, word and frame path at code offset 0x0800
 
@@ -92,8 +94,10 @@ The original `0x0950` sample routine is now translated into
   `max(abs(I),abs(Q)) + (min(abs(I),abs(Q)) >> 2) + (min(...) >> 3)`.
   Its baseline rises by `(magnitude-baseline)>>5` then clamps to a minimum
   baseline of 16; it falls by `baseline-(baseline>>10)`; the initialized baselines are both 16.
-- The discriminator compares cross-normalized tone levels:
+- The discriminator subtract order at code offsets `0x0A54..0x0A60` is:
   `mag1200*smooth1800*weight1200 - mag1800*smooth1200*weight1800`.
+  An earlier C translation had this subtraction reversed; it was corrected
+  in commit `6ca52dd26db000ab833be7f14fd62d03900f18a9`.
   The two weight pairs are 2:3 and 3:2. Each has its own previous-difference
   sign, phase accumulator, and 26-bit frame collector.
 - Each lane advances phase by `0x2000` per sample; on sign changes it nudges
