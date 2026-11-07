@@ -52,7 +52,11 @@ jobs:
             sample-9600-adc.bin
             sample-48k.wav
             tdcsrx_reference_48k.bits
-            tdcsrx_real_wav_trace.csv
+            research/tdcsrx_rx03/tdcsrx_real_wav_trace.csv
+            research/tdcsrx_rx03/tdcsrx_recovered_*.c
+            research/tdcsrx_rx03/tdcsrx_recovered_*.h
+            research/tdcsrx_rx03/test_tdcsrx_real_wav.c
+            research/tdcsrx_rx03/compare_real_wav_bits.py
             research/tdcsrx_rx03/tdcsrx_path*.bits
       - name: Clean test executables
         if: always()
