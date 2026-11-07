@@ -252,7 +252,7 @@ def print_result(
         f"record_1F_25={compact[0x1F:0x26].hex().upper()} "
         f"record_26_27_untouched={compact[0x26:0x28].hex().upper()} "
         f"header_variant={compact[0x24]} index_byte={compact[0x25]} "
-        f"guard={guard.hex().upper()}
+        f"guard={guard.hex().upper()}"
     )
 
 
