@@ -171,7 +171,7 @@ int main(int argc, char **argv)
                 on_frame, &capture);
             if (trace != NULL) {
                 (void)fprintf(trace,
-                    "%lu,%d,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld\\n",
+                    "%lu,%d,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld\n",
                     (unsigned long)i, adjusted,
                     (long)state.filter_y_1,
                     (long)state.corr_1200_i, (long)state.corr_1200_q,
