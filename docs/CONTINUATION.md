@@ -1,9 +1,9 @@
 # K6 LBJRX / TDCSRX 原版移植 — 当前交接记录
 
-更新时间：2026-11-06
+更新时间：2026-11-07
 仓库：https://github.com/rzwcl/K6-LBJ-RX
 默认分支：`main`
-当前 main HEAD：`223accd95dc3be1dd9b7d30455691e4fb05b66cc`
+当前 main HEAD：以 GitHub main 分支实时指向为准；本次更新前为 a1c571c86e94f57a28b0f8e3f1a87f75f60bec79。
 
 ## 目标（不能偏离）
 
@@ -135,3 +135,46 @@ runtime `0x20000A80` 是 code offset `0x0800`；runtime `0x20000484` 是 code of
 4. 分别构建 LBJRX-K6 和 TDCSRX-K6 完整固件镜像，每个目标独立配置/独立输出。
 5. 做 host tests、完整 ARM GCC 构建、尺寸/CRC检查，再做 K6 实机无发射、信号源同步/位序/极性/重捕获测试。
 6. 每完成一个独立阶段就 commit GitHub，记录 SHA、测试结果和仍未验证的内容。实机验证之前不得称为“可正常使用”，也不得给出刷写建议。
+
+
+## 2026-11-07 继续推进记录（最新）
+
+### TDCSRX：硬件同步到软件帧同步的接口验证
+
+- 当前仍没有原作者完整 TDCSRX C/H 源码；tdcsrx_recovered_* 仍属于 0.3 FAP1 的二进制逆向恢复。
+- 已核对 LOSEHU 固定基线的 FSK 中断处理：RX_SYNC 时读取 REG_0B[7] 极性状态；FIFO almost-full 时按 16-bit word 读取 REG_5F，现有 MDC 路径低字节先、高字节后。这个现有代码说明硬件同步事件与后续 FIFO payload 分开处理，但不证明 TDCS 的 bit packing。
+- 对照公开铁路协议 CN202153314U，信号结构为 51-bit 交替位同步、31-bit frame sync 0x0DD4259F、BCH(26,16)。
+- 新增 research/tdcsrx_rx03/K6_BK4819_FIFO_ADAPTER.md。候选实验是 BK4819 用 2-byte 交替位标记（初步 REG_5A=0xAAAA）锁定前导码，预期硬件消费16位，FIFO保留35位交替前导码 + 31位软件帧同步 + 23个26-bit BCH字。
+- 这个输入长度计算为664 bits / 83 bytes；如果 BK REG_5D 的长度字段最终确认按 length-1 表示，候选值会是 0x5200。这只是计算假设，不是可以直接写进K6的配置。必须先通过原始 FIFO 捕获确定是否对齐/是否吞掉恰好16位/字节与位序/极性/长度计数。
+- b98b059c2c0e36699d71be05d0a178cc41dd8aea 添加上述 TDCS handoff 主机测试，证明软件 collector 能处理35位 residual preamble 后跟31-bit sync。该 commit 的 GitHub Actions run 42340865818 中协议、BCH、45-byte parser、双 collector 和此 handoff test 均通过。
+- TDCS ADC-DSP 到整帧测试仍失败：当前模拟9.6 ksample/s音频不能同步，回调为0。最近 CI 42341006065 仍以 test_full_9600_hz_audio_to_frame 的断言失败结束。这个失败没有删掉，也没有把它改成通过。TDCSRX_REVERSE_ENGINEERING.md 与 TDCSRX_RX03_SIGNAL_PATH.md 已修正状态说明。
+- 所以 TDCS 的软件帧层可单独主机验证，sample-to-bit DSP 仍未验证；BK4819 FIFO 端到端也未验证。
+
+### LBJRX：原版 POCSAG 解码器的 FIFO 前导码交接
+
+- 原版 lbj_rx_bit() 的行为进一步核实：每个输入bit先进入32-bit shift；它自己搜索 0x7CD215D8，正常极性同步距离 <=2，反相距离 >=30；同步后每32位处理一个POCSAG码字，调用原版 BCH/偶校验/地址/BCD/批次逻辑。
+- 新增 test_residual_pocsag_preamble_after_hardware_sync()，直接编译原样 lbj_dec.c，模拟16位硬件同步已被消费、软件侧继续收到560位交替前导码，再输入原始32-bit POCSAG sync、地址字、消息字和idle字；正、反极性两种输入都必须产生RIC 1234000、BCD 12345。
+- 测试提交：3326fe2be039f85716bd44369e7c9ba2a45a4f3b；GitHub Actions run 42341138790 success。这只证明原版软件decoder能接住假设的剩余前导码，不证明BK4819真的按此方式锁定/剥离/输出。
+- 新增 research/lbjrx_v04/K6_BK4819_FIFO_ADAPTER.md，记录 direct FSK 1.2K候选、2-byte交替位硬件sync思路、原版 lbj_rx_bit() 接口和必须通过实测确认的FIFO问题。
+- POCSAG 是重复 batch 流（1个32-bit sync + 16个32-bit codewords），不同于 TDCS 单个83-byte frame。不能简单把一次 FIFO almost-full 当成完整消息，也不能猜一个 REG_5D 长度。必须测连续接收/硬件RX finished行为/重新arm/剩余字读取。
+
+### 本轮新提交
+
+| Commit | 内容 | 当前验证 |
+|---|---|---|
+| b98b059c2c0e36699d71be05d0a178cc41dd8aea | TDCS residual preamble → frame sync handoff host test | 协议和帧测试通过；整体因 DSP 音频到帧失败 |
+| 19c51532a877d1a2eb4c40cdbee3658621b2d0c9 | TDCS K6 BK4819 FIFO adapter 设计记录 | 文档 |
+| be2c966b8c42e9770354478bb1d5d97f5a3193bd | 修正 TDCS DSP 未通过说明和 FIFO 策略 | 文档 |
+| a98a783b00061f4341fe42f4dfcd6776c5271d2c | 修正 TDCS sample-to-bit 失败说明 | 文档 |
+| 3326fe2be039f85716bd44369e7c9ba2a45a4f3b | LBJ residual preamble host test | GitHub Actions 42341138790 success |
+| a1c571c86e94f57a28b0f8e3f1a87f75f60bec79 | LBJ K6 BK4819 FIFO adapter 设计记录 | 文档 |
+
+### 现在真正缺少的输入/下一步
+
+1. 拿到可与目标信号同步的受控信号源或一段可关联解码内容的原始 BK4819 FIFO dump。必须包含已知TDCS/POCSAG帧以及 REG_02/REG_0B/REG_5D/REG_5E/REG_5F 原始记录。没有这一步，就无法负责任地固定字节序、bit order、sync stripping和极性。
+2. 继续追 TDCSRX 0.3 的 DSP：优先逐条比对 0x0950 Thumb 指令对 I/Q、平滑基线、差分、符号变化、phase accumulator 和调用 0x0800 的条件；不能靠随意调振幅把测试调绿。
+3. 在真实FIFO格式确认后，再实现单独的 receive-only BK4819 adapter：LBJ 走原版 lbj_rx_bit()，TDCS走已恢复的 software sync/BCH/frame path（或继续从原二进制复原完整软解调链，不能宣称原始DSP已验证）。
+4. 再从干净的 LOSEHU 0.13.2 基础建两个独立完整固件目标，分别完成 UI、RAM历史、频率切换与退出恢复、无发射保护和尺寸限制。
+5. 通过 ARM 编译、host tests、尺寸/CRC，再上K6做受控实机接收测试。未完成上述验证前不发布、不刷机。
+
+当前安全结论不变：仍无可刷入的 LBJRX-K6 或 TDCSRX-K6 完整固件。
