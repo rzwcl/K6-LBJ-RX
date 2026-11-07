@@ -148,6 +148,15 @@ int main(int argc, char **argv)
         memset(&capture, 0, sizeof(capture));
         tdcsrx_audio_init(&state);
         printf("SCALE %.2f\n", scales[scale_index]);
+        if (scales[scale_index] == 1.0) {
+            trace = fopen("tdcsrx_real_wav_trace.csv", "w");
+            if (trace != NULL) {
+                fputs("sample,adc,filter_y1,corr1200_i,corr1200_q,"
+                      "corr1800_i,corr1800_q,smooth1200,smooth1800,"
+                      "phase1200,phase1800,diff_a,phase_a,diff_b,phase_b\n",
+                      trace);
+            }
+        }
 
         for (i = 0u; i < sample_count; ++i) {
             int32_t centred = (int32_t)samples[i] - 2048;
