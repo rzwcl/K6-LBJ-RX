@@ -13,7 +13,7 @@ import struct
 import urllib.request
 import zlib
 
-from unicorn import Uc, UC_ARCH_ARM, UC_MODE_MCLASS, UC_MODE_THUMB
+from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
 from unicorn.arm_const import (
     UC_ARM_REG_CPSR,
     UC_ARM_REG_LR,
@@ -21,6 +21,9 @@ from unicorn.arm_const import (
     UC_ARM_REG_R0,
     UC_ARM_REG_R1,
     UC_ARM_REG_R2,
+    UC_ARM_REG_R3,
+    UC_ARM_REG_R4,
+    UC_ARM_REG_R5,
     UC_ARM_REG_SP,
 )
 
@@ -137,7 +140,30 @@ def execute_parser(code: bytes, train_number: int) -> tuple[int, bytes, bytes]:
     uc.reg_write(UC_ARM_REG_R2, OUTPUT_ADDRESS)
     uc.reg_write(UC_ARM_REG_LR, RETURN_ADDRESS | 1)
 
+    trace_offsets = {
+        0x06C0, 0x06C2, 0x06C6, 0x06C8, 0x06CE, 0x06D0,
+        0x06D6, 0x06D8, 0x06DC, 0x06E0, 0x06E2, 0x06E6,
+        0x06E8, 0x06EE, 0x06F0, 0x06F4, 0x06F6, 0x07E4,
+        0x07E6, 0x07E8, 0x07EA,
+    }
+    trace_rows = []
+
+    def trace_hook(machine, address, _size, _user_data):
+        offset = (address & 0xFFFFFFFE) - LINK_VMA
+        if train_number == 319 and offset in trace_offsets:
+            trace_rows.append((
+                offset,
+                machine.reg_read(UC_ARM_REG_R1),
+                machine.reg_read(UC_ARM_REG_R3),
+                machine.reg_read(UC_ARM_REG_R4),
+                machine.reg_read(UC_ARM_REG_R5),
+            ))
+
+    uc.hook_add(UC_HOOK_CODE, trace_hook)
     uc.emu_start(PARSER_ENTRY | 1, RETURN_ADDRESS, count=20000)
+    if train_number == 319:
+        for offset, r1, r3, r4, r5 in trace_rows:
+            print(f"  TRACE offset=0x{offset:04X} r1={r1} r3={r3} r4=0x{r4:08X} r5=0x{r5:08X}")
     pc = uc.reg_read(UC_ARM_REG_PC) & 0xFFFFFFFE
     if pc != RETURN_ADDRESS:
         raise RuntimeError(f"parser failed to return: PC=0x{pc:08X}")
@@ -190,8 +216,8 @@ def main() -> None:
         raise AssertionError("original parser rejected the 46-byte collector buffer")
     if int.from_bytes(compact_46[4:8], "little") != 319:
         raise AssertionError("compact record train number mismatch")
-    if compact_46[0x12] != compact_46[0x13]:
-        raise AssertionError("q=0 must read the same frame[0x28] byte twice")
+    if compact_46[0x12] != 0x82 or compact_46[0x13] != 0xD2:
+        raise AssertionError("q=1 must read frame[0x28] and frame[0x29]")
     if compact_46[0x26:0x28] != b"\xCC\xCC":
         raise AssertionError("unexpected parser writes into reserved bytes 0x26..0x27")
     if any(value != 0xCC for value in guard_46):
