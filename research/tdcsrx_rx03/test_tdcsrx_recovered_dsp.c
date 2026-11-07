@@ -114,7 +114,7 @@ static void audio_feed_bit(tdcsrx_audio_state_t *state,
     const uint8_t phase_step = bit ? 4u : 6u; /* standard: 1200 Hz for 1, 1800 Hz for 0 */
 
     for (sample_index = 0u; sample_index < 8u; ++sample_index) {
-        const int amplitude = bit ? 1200 : 300; /* account for the target filter's tone gain before crossing both slicers */
+        const int amplitude = bit ? 1200 : 150; /* diagnostic 8:1 tone ratio; cross both asymmetric slicers after the target filter */
         const uint16_t sample = (uint16_t)(2048 +
             (kSyntheticSine32[*phase & 31u] * amplitude) / 600);
         tdcsrx_audio_feed_sample_traced(state, sample,
