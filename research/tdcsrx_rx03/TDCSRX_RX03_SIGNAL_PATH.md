@@ -52,8 +52,12 @@ accumulators at state offsets `+0x14`, `+0x18`, `+0x1C`, and `+0x20`.
   it also selects `(phase+4)&15`, giving I/Q at 1,800 Hz (the third
   harmonic of 600 Hz).
 
-The exact discriminator scale, smoothing and bit decision threshold are not
-yet recovered in a cycle-accurate C form.
+The C module now contains a first-pass translation of the discriminator
+scale, smoothing, and decision-state updates. It is **not validated as a
+working sample-to-bit decoder**: the current synthetic 9.6 ksample/s
+audio-to-frame test fails to acquire sync and produces zero frame callbacks.
+The protocol/frame tests pass separately. The failure is preserved in
+[Actions run 42340865818](https://github.com/rzwcl/K6-LBJ-RX/actions/runs/42340865818).
 
 ## Sync, word and frame path at code offset 0x0800
 
@@ -99,9 +103,12 @@ The original `0x0950` sample routine is now translated into
   states begin at parent offsets `0x88` and `0xC8`.
 
 All arithmetic in the translation explicitly models 32-bit wrap and ARM
-arithmetic right shifts. This reproduces the observed sample detector more
-closely than the earlier single-stream abstraction. It is still a host-side
-translation: no K6 ADC/audio route or BK4819 FIFO has been connected.
+arithmetic right shifts. Despite this instruction-based reconstruction, the
+synthetic end-to-end audio test does not produce a valid frame. Treat this as
+an incomplete, unverified sample-to-bit translation—not as a proven TDCSRX
+receiver. The proposed alternative BK4819 FFSK FIFO handoff and the exact
+unknowns to capture are documented in
+[K6_BK4819_FIFO_ADAPTER.md](K6_BK4819_FIFO_ADAPTER.md).
 
 ## Dual discriminator paths — recovered structure
 
