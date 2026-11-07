@@ -35,12 +35,90 @@ Q1200_9600 = projection_9600(1200.0)
 Q1800_9600 = projection_9600(1800.0)
 
 
+def polynomial_remainder(value, polynomial=0x05B9):
+    degree = polynomial.bit_length()
+    while value and value.bit_length() >= degree:
+        value ^= polynomial << (value.bit_length() - degree)
+    return value
+
+
+def crc16_xmodem(data):
+    crc = 0
+    for value in data:
+        crc ^= value << 8
+        for _ in range(8):
+            crc = (((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)) & 0xFFFF
+    return crc
+
+
+def decode_simple_frame(bits, sync_position):
+    wire = bits[sync_position + len(SYNC):sync_position + len(SYNC) + 23 * 26]
+    if len(wire) != 23 * 26:
+        return None
+
+    syndrome_table = {
+        polynomial_remainder(1 << bit): bit
+        for bit in range(26)
+    }
+    decoded = bytearray()
+    corrected = 0
+    uncorrectable = []
+
+    for word_index in range(23):
+        start = word_index * 26
+        codeword = int(wire[start:start + 26], 2)
+        syndrome = polynomial_remainder(codeword)
+        if syndrome:
+            bit = syndrome_table.get(syndrome)
+            if bit is None:
+                uncorrectable.append((word_index, syndrome))
+            else:
+                codeword ^= 1 << bit
+                corrected += 1
+        decoded.extend((codeword >> 10).to_bytes(2, "big"))
+
+    if uncorrectable:
+        return {
+            "ok": False,
+            "corrected": corrected,
+            "uncorrectable": uncorrectable,
+        }
+
+    frame = bytes(decoded[:45])
+    padding = decoded[45]
+    received_crc = int.from_bytes(frame[43:45], "big")
+    calculated_crc = crc16_xmodem(frame[:43])
+    header_ok = (
+        frame[0:2] == b"\x0c\x2b"
+        and frame[10] == 0x20
+        and (
+            frame[7:10] == b"\xff\xff\xff"
+            or frame[7:10] == b"\x1f\x8c\x30"
+        )
+    )
+    ok = (
+        header_ok and padding == 0
+        and received_crc == calculated_crc
+    )
+    return {
+        "ok": ok,
+        "corrected": corrected,
+        "uncorrectable": [],
+        "padding": padding,
+        "received_crc": received_crc,
+        "calculated_crc": calculated_crc,
+        "header_ok": header_ok,
+        "frame": frame,
+    }
+
+
 def compare_simple_9600(adc_path, ref_bits):
     raw = np.fromfile(adc_path, dtype="<u2")
     if raw.size == 0 or np.any(raw > 4095):
         raise SystemExit("9.6 kHz ADC file must contain unsigned 12-bit samples in u16le")
     samples = raw.astype(np.float32) - 2048.0
     best = (0.0, None, None, None)
+    passing_frames = []
 
     for phase in range(8):
         count = min((len(samples) - phase) // 8, len(ref_bits))
@@ -50,15 +128,43 @@ def compare_simple_9600(adc_path, ref_bits):
         e1200 = np.sum((windows @ Q1200_9600) ** 2, axis=1)
         e1800 = np.sum((windows @ Q1800_9600) ** 2, axis=1)
         decisions = e1200 > e1800
+        bit_text = "".join("1" if value else "0" for value in decisions)
         reference = np.fromiter((bit == "1" for bit in ref_bits[:count]),
                                 dtype=np.bool_, count=count)
         accuracy = float(np.mean(decisions == reference))
         if accuracy > best[0]:
             best = (accuracy, phase, int(np.count_nonzero(decisions)), count)
 
+        for candidate_bits, inverted in (
+            (bit_text, False),
+            (bit_text.translate(str.maketrans("01", "10")), True),
+        ):
+            sync_position = candidate_bits.find(SYNC)
+            if sync_position < 0:
+                continue
+            result = decode_simple_frame(candidate_bits, sync_position)
+            if result is not None:
+                print(f"SIMPLE_9600_FRAME phase={phase} sync_bit={sync_position} "
+                      f"inverted={int(inverted)} corrections={result['corrected']} "
+                      f"uncorrectable={len(result['uncorrectable'])} "
+                      f"header_ok={int(result.get('header_ok', False))} "
+                      f"crc={result.get('received_crc', 0):04X}/"
+                      f"{result.get('calculated_crc', 0):04X} "
+                      f"padding={result.get('padding', -1)} "
+                      f"pass={int(result['ok'])}")
+                if result["ok"]:
+                    passing_frames.append((phase, sync_position, result))
+
     accuracy, phase, ones, count = best
     print(f"SIMPLE_9600_QUADRATURE best_phase={phase} "
           f"bit_agreement={accuracy:.4f} ones={ones}/{count}")
+    if passing_frames:
+        frame_phase, sync_position, result = passing_frames[0]
+        print(f"SIMPLE_9600_FRAME_PASS phase={frame_phase} sync_bit={sync_position} "
+              f"crc={result['received_crc']:04X} corrected={result['corrected']} "
+              f"frame={result['frame'].hex().upper()}")
+    else:
+        print("SIMPLE_9600_FRAME_FAIL: no phase produced a BCH/CRC-valid frame")
     print("NOTE: this is an independent 8-sample reference detector, not the recovered TDCSRX DSP.")
     return accuracy
 
