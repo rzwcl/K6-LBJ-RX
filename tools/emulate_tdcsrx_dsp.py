@@ -229,7 +229,9 @@ def main() -> int:
             invalid_collectors.append(collector)
 
         collector_hits += 1
-        return_address = machine.reg_read(UC_ARM_REG_LR) & 0xFFFFFFFE
+        # Preserve LR bit 0: Unicorn uses it to keep the return in Thumb
+        # state when PC is written by this code hook.
+        return_address = machine.reg_read(UC_ARM_REG_LR)
         machine.reg_write(UC_ARM_REG_PC, return_address)
 
     uc.hook_add(UC_HOOK_CODE, code_hook)
